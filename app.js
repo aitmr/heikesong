@@ -1809,9 +1809,23 @@
     });
 
     playToggle.addEventListener("click", togglePlayback);
-    timeline.addEventListener("click", (event) => {
+    const seekByClientX = (clientX) => {
       const rect = timeline.getBoundingClientRect();
-      jumpTo(((event.clientX - rect.left) / rect.width) * state.duration);
+      if (!rect.width) return;
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      jumpTo(ratio * state.duration);
+    };
+    timeline.addEventListener("click", (event) => {
+      seekByClientX(event.clientX);
+    });
+    timeline.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      timeline.setPointerCapture?.(event.pointerId);
+      seekByClientX(event.clientX);
+    });
+    timeline.addEventListener("pointermove", (event) => {
+      if (event.buttons !== 1) return;
+      seekByClientX(event.clientX);
     });
     document.querySelectorAll("[data-seek]").forEach((button) => {
       button.addEventListener("click", (event) => {
