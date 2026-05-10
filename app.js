@@ -27,7 +27,11 @@
     star: "M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3L5.8 21 7 14.2 2 9.3l6.9-1L12 2z",
     upload: "M12 3v12M7 8l5-5 5 5M5 21h14",
     more: "M12 13a1 1 0 100-2 1 1 0 000 2zM19 13a1 1 0 100-2 1 1 0 000 2zM5 13a1 1 0 100-2 1 1 0 000 2z",
-    x: "M18 6L6 18M6 6l12 12"
+    x: "M18 6L6 18M6 6l12 12",
+    checkCircle: "M21 12a9 9 0 11-18 0 9 9 0 0118 0zM8 12l2.5 2.5L16 9",
+    calendar: "M8 2v3M16 2v3M3 8h18M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z",
+    user: "M20 21a8 8 0 10-16 0M12 11a4 4 0 100-8 4 4 0 000 8",
+    edit: "M4 20h4l10-10-4-4L4 16v4zM13 7l4 4"
   };
 
   const NODE_WIDTH = 220;
@@ -61,6 +65,8 @@
     broll: { label: "空镜头", color: "#16a34a", axis: { x: 172, y: 138 } }
   };
   const SHOT_THEME_ORDER = ["talking", "closeup", "broll"];
+  const STORAGE_KEY = "bricknote.v2.state";
+  const CANVAS_COLORS = ["#2563eb", "#16a34a", "#f97316", "#a855f7", "#ef4444", "#0ea5e9"];
 
   const state = {
     analysis: clone(window.MOCK_ANALYSIS.bricknote),
@@ -89,9 +95,7 @@
       p3: "重庆洪崖洞拆解\n\n- 山城夜景、吊脚楼和市井招牌共同制造复古场景。\n- 通过层叠空间和人流密度，把旅游地标拍成沉浸式故事入口。\n- 与长沙文和友一样，核心都在于把消费空间转化成可传播的城市记忆。"
     },
     workspacesByPage: {
-      p1: [],
-      p2: [],
-      p3: [
+      f1: [
         {
           id: "nebula-hongyadong-scene",
           segmentId: "nebula-hongyadong-scene",
@@ -109,7 +113,9 @@
           summary: "用吊脚楼、霓虹招牌和山城夜景叠出复古场景，让空间本身成为短视频记忆点。",
           keywords: ["场景化", "复古", "怀旧", "城市记忆"]
         }
-      ]
+      ],
+      f2: [],
+      f3: []
     },
     generatedNote: null,
     summaryViewMode: "",
@@ -123,13 +129,100 @@
     importError: "",
     localObjectUrl: null,
     analysisSummary: window.MOCK_ANALYSIS.bricknote.coreIdea,
-    backendSource: "mock"
+    backendSource: "mock",
+    canvasMetaByPage: {
+      f1: { labelColor: "#2563eb", direction: "R", lastAnalysisText: "" },
+      f2: { labelColor: "#16a34a", direction: "R", lastAnalysisText: "" },
+      f3: { labelColor: "#a855f7", direction: "Z", lastAnalysisText: "" }
+    },
+    checkinsByDate: {},
+    coreBrickByPage: {}
   };
 
   const app = document.getElementById("app");
 
   function clone(source) {
     return JSON.parse(JSON.stringify(source));
+  }
+
+  function todayKey() {
+    const date = new Date();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+  }
+
+  function defaultCanvasMeta(pageId) {
+    const hash = String(pageId || "").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const color = CANVAS_COLORS[Math.abs(hash) % CANVAS_COLORS.length];
+    return { labelColor: color, direction: "R", lastAnalysisText: "" };
+  }
+
+  function ensureCanvasMeta(pageId) {
+    if (!state.canvasMetaByPage[pageId]) {
+      state.canvasMetaByPage[pageId] = defaultCanvasMeta(pageId);
+    }
+    return state.canvasMetaByPage[pageId];
+  }
+
+  function persistState() {
+    const payload = {
+      folders: state.folders,
+      activePageId: state.activePageId,
+      notesByPage: state.notesByPage,
+      workspacesByPage: state.workspacesByPage,
+      canvasMetaByPage: state.canvasMetaByPage,
+      checkinsByDate: state.checkinsByDate,
+      coreBrickByPage: state.coreBrickByPage
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function hydrateState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.folders)) state.folders = parsed.folders;
+      if (parsed.activePageId) state.activePageId = parsed.activePageId;
+      if (parsed.notesByPage && typeof parsed.notesByPage === "object") state.notesByPage = parsed.notesByPage;
+      if (parsed.workspacesByPage && typeof parsed.workspacesByPage === "object") state.workspacesByPage = parsed.workspacesByPage;
+      if (parsed.canvasMetaByPage && typeof parsed.canvasMetaByPage === "object") state.canvasMetaByPage = parsed.canvasMetaByPage;
+      if (parsed.checkinsByDate && typeof parsed.checkinsByDate === "object") state.checkinsByDate = parsed.checkinsByDate;
+      if (parsed.coreBrickByPage && typeof parsed.coreBrickByPage === "object") state.coreBrickByPage = parsed.coreBrickByPage;
+
+      const folderIds = new Set((state.folders || []).map((folder) => folder.id));
+      Object.entries({ ...state.workspacesByPage }).forEach(([key, workspace]) => {
+        if (folderIds.has(key)) return;
+        const mappedFolder = folderByPageId(key);
+        if (mappedFolder && folderIds.has(mappedFolder.id)) {
+          state.workspacesByPage[mappedFolder.id] = [
+            ...(state.workspacesByPage[mappedFolder.id] || []),
+            ...(Array.isArray(workspace) ? workspace : [])
+          ];
+        }
+        delete state.workspacesByPage[key];
+      });
+      folderIds.forEach((folderId) => {
+        if (!Array.isArray(state.workspacesByPage[folderId])) state.workspacesByPage[folderId] = [];
+        ensureCanvasMeta(folderId);
+      });
+
+      Object.keys(state.checkinsByDate || {}).forEach((dateKey) => {
+        state.checkinsByDate[dateKey] = (state.checkinsByDate[dateKey] || [])
+          .map((entry) => {
+            if (entry.folderId) return entry;
+            const mapped = entry.pageId ? folderByPageId(entry.pageId) : null;
+            return {
+              folderId: mapped ? mapped.id : "",
+              labelColor: entry.labelColor || (mapped ? ensureCanvasMeta(mapped.id).labelColor : "#94a3b8")
+            };
+          })
+          .filter((entry) => entry.folderId);
+      });
+    } catch (error) {
+      console.warn("local storage parse failed:", error);
+    }
   }
 
   function escapeHtml(value) {
@@ -161,6 +254,23 @@
     return page ? page.title : "未命名笔记";
   }
 
+  function folderByPageId(pageId) {
+    return state.folders.find((folder) => folder.pages.some((page) => page.id === pageId)) || state.folders[0] || null;
+  }
+
+  function activeFolder() {
+    return folderByPageId(state.activePageId);
+  }
+
+  function activeFolderId() {
+    const folder = activeFolder();
+    return folder ? folder.id : "";
+  }
+
+  function activeCanvasMeta() {
+    return ensureCanvasMeta(activeFolderId());
+  }
+
   function pageTitleById(pageId) {
     for (const folder of state.folders) {
       const page = folder.pages.find((item) => item.id === pageId);
@@ -185,22 +295,23 @@
   }
 
   function activeWorkspace() {
-    if (!Array.isArray(state.workspacesByPage[state.activePageId])) {
-      state.workspacesByPage[state.activePageId] = [];
+    const folderId = activeFolderId();
+    if (!Array.isArray(state.workspacesByPage[folderId])) {
+      state.workspacesByPage[folderId] = [];
     }
-    return state.workspacesByPage[state.activePageId];
+    return state.workspacesByPage[folderId];
   }
 
   function setActiveWorkspace(nextWorkspace) {
-    state.workspacesByPage[state.activePageId] = nextWorkspace;
+    state.workspacesByPage[activeFolderId()] = nextWorkspace;
   }
 
   function allWorkspaceBricks() {
-    return Object.entries(state.workspacesByPage).flatMap(([pageId, workspace]) =>
+    return Object.entries(state.workspacesByPage).flatMap(([folderId, workspace]) =>
       (workspace || []).map((brick) => ({
         ...brick,
-        pageId,
-        pageTitle: pageTitleById(pageId)
+        folderId,
+        folderTitle: (state.folders.find((folder) => folder.id === folderId) || {}).name || "未命名笔记夹"
       }))
     );
   }
@@ -209,11 +320,13 @@
     const normalized = normalizeGeneratedNote(note);
     if (!normalized) return "";
     const selectedMode = normalizeSummaryMode(mode || normalized.mode);
-    const modeMeta = SUMMARY_MODES[selectedMode];
+    const selectedModeMeta = SUMMARY_MODES[selectedMode];
+    const recommendedModeMeta = SUMMARY_MODES[normalizeSummaryMode(normalized.mode)];
     const lines = [
       `# ${normalized.title}`,
       "",
-      `推荐视图：${modeMeta.label}`,
+      `输出视图：${selectedModeMeta.label}`,
+      `AI 推荐：${recommendedModeMeta.label}`,
       `推荐理由：${normalized.modeReason}`,
       "",
       `核心观点：${normalized.core}`,
@@ -1247,7 +1360,7 @@
     if (!state.generatedNote) return "";
     const note = normalizeGeneratedNote(state.generatedNote);
     const selectedMode = normalizeSummaryMode(state.summaryViewMode || note.mode);
-    const modeMeta = SUMMARY_MODES[selectedMode];
+    const recommendedModeMeta = SUMMARY_MODES[normalizeSummaryMode(note.mode)];
 
     return `
       <section class="generated-note" id="generatedNoteSection">
@@ -1264,7 +1377,7 @@
         </div>
 
         <div class="summary-mode-meta">
-          <span>${icon(modeMeta.icon, 14)} AI 推荐：${escapeHtml(modeMeta.label)}</span>
+          <span>${icon(recommendedModeMeta.icon, 14)} AI 推荐：${escapeHtml(recommendedModeMeta.label)}</span>
           <p>${escapeHtml(note.modeReason)}</p>
         </div>
 

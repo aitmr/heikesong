@@ -872,7 +872,13 @@ async function handleGenerateSummary(request, response) {
 
     sendJson(response, 200, { note, source: "endpoint" });
   } catch (error) {
-    sendJson(response, 502, { error: error.message || "总结生成失败，请稍后重试。" });
+    const fallbackNote = buildFallbackStructuredNote(fileName, segments, relations);
+    fallbackNote.action = `${fallbackNote.action} AI 总结暂不可用，已使用本地结构化总结。`;
+    sendJson(response, 200, {
+      note: fallbackNote,
+      source: "fallback",
+      error: error.message || "总结生成失败，已使用本地 fallback。"
+    });
   }
 }
 
