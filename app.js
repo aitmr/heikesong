@@ -35,7 +35,7 @@
   };
 
   const NODE_WIDTH = 220;
-  const NODE_HEIGHT = 154;
+  const NODE_HEIGHT = 190;
   const ROW_TOLERANCE = 42;
   const COL_TOLERANCE = 42;
   const ADJACENT_Y = NODE_HEIGHT + 28;
@@ -59,13 +59,9 @@
     flowchart: { label: "逻辑流程图", shortLabel: "Flowchart", icon: "gitBranch" }
   };
   const SUMMARY_MODE_ORDER = ["mind_map", "temporal_map", "flowchart"];
-  const SHOT_THEME_META = {
-    talking: { label: "谈话", color: "#2563eb", axis: { x: 100, y: 18 } },
-    closeup: { label: "特写", color: "#f97316", axis: { x: 28, y: 138 } },
-    broll: { label: "空镜头", color: "#16a34a", axis: { x: 172, y: 138 } }
-  };
-  const SHOT_THEME_ORDER = ["talking", "closeup", "broll"];
   const STORAGE_KEY = "bricknote.v2.state";
+  const DATABASE_STATUS_KEY = "bricknote.v2.database.status";
+  const DEMO_STATE_VERSION = 3;
   const CANVAS_COLORS = ["#2563eb", "#16a34a", "#f97316", "#a855f7", "#ef4444", "#0ea5e9"];
 
   const state = {
@@ -78,21 +74,21 @@
     folders: [
       {
         id: "f1",
-        name: "美食探店系列",
+        name: "线性代数学习",
         isOpen: true,
         pages: [
-          { id: "p1", title: "长沙文和友拆解" },
-          { id: "p3", title: "重庆洪崖洞拆解" }
+          { id: "p1", title: "矩阵乘法拆解" },
+          { id: "p3", title: "转置与线性运算" }
         ]
       },
-      { id: "f2", name: "短视频脚本公式", isOpen: false, pages: [{ id: "p2", title: "黄金3秒钩子法则" }] },
+      { id: "f2", name: "复习模板", isOpen: false, pages: [{ id: "p2", title: "公式记忆卡片" }] },
       { id: "f3", name: "个人收藏", isOpen: false, pages: [] }
     ],
     activePageId: "p1",
     notesByPage: {
-      p1: "长沙文和友拆解\n\n- 开头先用城市记忆和排队场景建立情绪钩子。\n- 中段用菜品特写、环境声和人物反应补足可信度。\n- 结尾把体验总结成可复用的探店脚本结构。",
-      p2: "黄金3秒钩子法则\n\n先给冲突、结果或强画面，再补背景。每条短视频只承载一个明确承诺。",
-      p3: "重庆洪崖洞拆解\n\n- 山城夜景、吊脚楼和市井招牌共同制造复古场景。\n- 通过层叠空间和人流密度，把旅游地标拍成沉浸式故事入口。\n- 与长沙文和友一样，核心都在于把消费空间转化成可传播的城市记忆。"
+      p1: "矩阵乘法拆解\n\n- 先确认左矩阵列数等于右矩阵行数。\n- 每个结果元素都来自左矩阵的一行与右矩阵的一列相乘求和。\n- 重点记住 AB 与 BA 通常不同，不能随意交换顺序。",
+      p2: "公式记忆卡片\n\n转置：把行列互换。\n矩阵加法：同型矩阵对应元素相加。\n矩阵乘法：第 i 行乘第 j 列求和。",
+      p3: "转置与线性运算\n\n- 转置会改变矩阵的行列位置。\n- 加法和数乘属于线性运算，规则直观但要求维度匹配。\n- 这些基础概念是理解矩阵乘法和后续线性变换的前置知识。"
     },
     workspacesByPage: {
       f1: [
@@ -102,16 +98,16 @@
           originSegmentId: "nebula-hongyadong-scene",
           instanceId: 3001,
           sourcePageId: "p3",
-          sourcePageTitle: "重庆洪崖洞拆解",
+          sourcePageTitle: "转置与线性运算",
           copiedFromInstanceId: null,
-          start: 22,
-          end: 58,
-          title: "洪崖洞复古场景营造",
-          type: "scene",
-          color: "#fda4af",
+          start: 28,
+          end: 105,
+          title: "转置与线性运算前置知识",
+          type: "key_point",
+          color: "#93c5fd",
           intensity: 0.78,
-          summary: "用吊脚楼、霓虹招牌和山城夜景叠出复古场景，让空间本身成为短视频记忆点。",
-          keywords: ["场景化", "复古", "怀旧", "城市记忆"]
+          summary: "先掌握转置、同型矩阵加法和数乘，后续矩阵乘法的维度判断才会更清楚。",
+          keywords: ["转置", "线性运算", "维度", "前置知识"]
         }
       ],
       f2: [],
@@ -127,9 +123,15 @@
     nodePulseUntil: {},
     importStatus: "演示视频已就绪",
     importError: "",
+    databaseStatus: localStorage.getItem(DATABASE_STATUS_KEY) || "本地数据库待同步",
+    databaseState: "idle",
+    hasHydratedDatabase: false,
+    persistTimer: null,
     localObjectUrl: null,
     analysisSummary: window.MOCK_ANALYSIS.bricknote.coreIdea,
     backendSource: "mock",
+    editingFolderId: "",
+    editingPageId: "",
     canvasMetaByPage: {
       f1: { labelColor: "#2563eb", direction: "R", lastAnalysisText: "" },
       f2: { labelColor: "#16a34a", direction: "R", lastAnalysisText: "" },
@@ -166,7 +168,14 @@
   }
 
   function persistState() {
-    const payload = {
+    const payload = serializableState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    queueDatabasePersist(payload);
+  }
+
+  function serializableState() {
+    return {
+      version: DEMO_STATE_VERSION,
       folders: state.folders,
       activePageId: state.activePageId,
       notesByPage: state.notesByPage,
@@ -175,7 +184,127 @@
       checkinsByDate: state.checkinsByDate,
       coreBrickByPage: state.coreBrickByPage
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  function applyPersistedState(parsed) {
+    if (!parsed || typeof parsed !== "object") return;
+    if (parsed.version !== DEMO_STATE_VERSION) return;
+    if (!Array.isArray(parsed.folders) || !parsed.folders.length) return;
+    state.folders = parsed.folders;
+    if (parsed.notesByPage && typeof parsed.notesByPage === "object") state.notesByPage = parsed.notesByPage;
+    if (parsed.workspacesByPage && typeof parsed.workspacesByPage === "object") state.workspacesByPage = parsed.workspacesByPage;
+    if (parsed.canvasMetaByPage && typeof parsed.canvasMetaByPage === "object") state.canvasMetaByPage = parsed.canvasMetaByPage;
+    if (parsed.checkinsByDate && typeof parsed.checkinsByDate === "object") state.checkinsByDate = parsed.checkinsByDate;
+    if (parsed.coreBrickByPage && typeof parsed.coreBrickByPage === "object") state.coreBrickByPage = parsed.coreBrickByPage;
+    if (parsed.activePageId && folderByPageId(parsed.activePageId)) state.activePageId = parsed.activePageId;
+
+    normalizePersistedState();
+  }
+
+  function normalizePersistedState() {
+    const folderIds = new Set((state.folders || []).map((folder) => folder.id));
+    Object.entries({ ...state.workspacesByPage }).forEach(([key, workspace]) => {
+      if (folderIds.has(key)) return;
+      const mappedFolder = folderByPageId(key);
+      if (mappedFolder && folderIds.has(mappedFolder.id)) {
+        state.workspacesByPage[mappedFolder.id] = [
+          ...(state.workspacesByPage[mappedFolder.id] || []),
+          ...(Array.isArray(workspace) ? workspace : [])
+        ];
+      }
+      delete state.workspacesByPage[key];
+    });
+    folderIds.forEach((folderId) => {
+      if (!Array.isArray(state.workspacesByPage[folderId])) state.workspacesByPage[folderId] = [];
+      ensureCanvasMeta(folderId);
+    });
+
+    Object.keys(state.checkinsByDate || {}).forEach((dateKey) => {
+      state.checkinsByDate[dateKey] = (state.checkinsByDate[dateKey] || [])
+        .map((entry) => {
+          if (entry.folderId) return entry;
+          const mapped = entry.pageId ? folderByPageId(entry.pageId) : null;
+          return {
+            folderId: mapped ? mapped.id : "",
+            labelColor: entry.labelColor || (mapped ? ensureCanvasMeta(mapped.id).labelColor : "#94a3b8")
+          };
+        })
+        .filter((entry) => entry.folderId);
+    });
+  }
+
+  function canUseDatabaseApi() {
+    return window.location.protocol === "http:" || window.location.protocol === "https:";
+  }
+
+  function queueDatabasePersist(payload) {
+    if (!canUseDatabaseApi() || !state.hasHydratedDatabase) return;
+    window.clearTimeout(state.persistTimer);
+    state.persistTimer = window.setTimeout(() => saveDatabaseState(payload), 360);
+  }
+
+  async function saveDatabaseState(payload) {
+    state.databaseState = "saving";
+    state.databaseStatus = "正在保存到本地数据库...";
+    syncDatabaseStatus();
+    try {
+      const response = await fetch("/api/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appState: payload || serializableState() })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "保存失败");
+      state.databaseStatus = result.updatedAt
+        ? `本地数据库已保存 ${new Date(result.updatedAt).toLocaleTimeString("zh-CN", { hour12: false })}`
+        : "本地数据库已保存";
+      state.databaseState = "saved";
+    } catch (error) {
+      state.databaseStatus = `本地数据库保存失败：${error.message}`;
+      state.databaseState = "error";
+    }
+    localStorage.setItem(DATABASE_STATUS_KEY, state.databaseStatus);
+    syncDatabaseStatus();
+  }
+
+  async function hydrateStateFromDatabase() {
+    if (!canUseDatabaseApi()) {
+      state.hasHydratedDatabase = true;
+      state.databaseState = "idle";
+      state.databaseStatus = "文件模式使用浏览器本地缓存";
+      localStorage.setItem(DATABASE_STATUS_KEY, state.databaseStatus);
+      syncDatabaseStatus();
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/state");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "读取失败");
+      if (payload.appState) {
+        applyPersistedState(payload.appState);
+        state.databaseStatus = payload.updatedAt
+          ? `已从本地数据库恢复 ${new Date(payload.updatedAt).toLocaleTimeString("zh-CN", { hour12: false })}`
+          : "已从本地数据库恢复";
+        state.hasHydratedDatabase = true;
+        state.databaseState = "saved";
+        localStorage.setItem(DATABASE_STATUS_KEY, state.databaseStatus);
+        render({ preserveScroll: false, skipPersist: true });
+        return;
+      }
+      state.hasHydratedDatabase = true;
+      state.databaseState = "idle";
+      state.databaseStatus = "本地数据库已就绪";
+      localStorage.setItem(DATABASE_STATUS_KEY, state.databaseStatus);
+      syncDatabaseStatus();
+      saveDatabaseState(serializableState());
+    } catch (error) {
+      state.hasHydratedDatabase = true;
+      state.databaseState = "error";
+      state.databaseStatus = `本地数据库读取失败：${error.message}`;
+      localStorage.setItem(DATABASE_STATUS_KEY, state.databaseStatus);
+      syncDatabaseStatus();
+    }
   }
 
   function hydrateState() {
@@ -183,43 +312,7 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed.folders)) state.folders = parsed.folders;
-      if (parsed.activePageId) state.activePageId = parsed.activePageId;
-      if (parsed.notesByPage && typeof parsed.notesByPage === "object") state.notesByPage = parsed.notesByPage;
-      if (parsed.workspacesByPage && typeof parsed.workspacesByPage === "object") state.workspacesByPage = parsed.workspacesByPage;
-      if (parsed.canvasMetaByPage && typeof parsed.canvasMetaByPage === "object") state.canvasMetaByPage = parsed.canvasMetaByPage;
-      if (parsed.checkinsByDate && typeof parsed.checkinsByDate === "object") state.checkinsByDate = parsed.checkinsByDate;
-      if (parsed.coreBrickByPage && typeof parsed.coreBrickByPage === "object") state.coreBrickByPage = parsed.coreBrickByPage;
-
-      const folderIds = new Set((state.folders || []).map((folder) => folder.id));
-      Object.entries({ ...state.workspacesByPage }).forEach(([key, workspace]) => {
-        if (folderIds.has(key)) return;
-        const mappedFolder = folderByPageId(key);
-        if (mappedFolder && folderIds.has(mappedFolder.id)) {
-          state.workspacesByPage[mappedFolder.id] = [
-            ...(state.workspacesByPage[mappedFolder.id] || []),
-            ...(Array.isArray(workspace) ? workspace : [])
-          ];
-        }
-        delete state.workspacesByPage[key];
-      });
-      folderIds.forEach((folderId) => {
-        if (!Array.isArray(state.workspacesByPage[folderId])) state.workspacesByPage[folderId] = [];
-        ensureCanvasMeta(folderId);
-      });
-
-      Object.keys(state.checkinsByDate || {}).forEach((dateKey) => {
-        state.checkinsByDate[dateKey] = (state.checkinsByDate[dateKey] || [])
-          .map((entry) => {
-            if (entry.folderId) return entry;
-            const mapped = entry.pageId ? folderByPageId(entry.pageId) : null;
-            return {
-              folderId: mapped ? mapped.id : "",
-              labelColor: entry.labelColor || (mapped ? ensureCanvasMeta(mapped.id).labelColor : "#94a3b8")
-            };
-          })
-          .filter((entry) => entry.folderId);
-      });
+      applyPersistedState(parsed);
     } catch (error) {
       console.warn("local storage parse failed:", error);
     }
@@ -246,7 +339,19 @@
     const safeSeconds = Math.max(0, Math.floor(seconds || 0));
     const minutes = Math.floor(safeSeconds / 60);
     const remainder = String(safeSeconds % 60).padStart(2, "0");
-    return `${minutes}:${remainder}`;
+    return `${String(minutes).padStart(2, "0")}:${remainder}`;
+  }
+
+  function timelineTicks() {
+    const duration = Math.max(1, Number(state.duration || 1));
+    const step = duration <= 90 ? 15 : duration <= 300 ? 45 : Math.max(60, Math.round(duration / 5 / 30) * 30);
+    const ticks = [];
+    for (let time = 0; time < duration; time += step) {
+      ticks.push(time);
+    }
+    if (duration - ticks[ticks.length - 1] < step * 0.55) ticks.pop();
+    if (ticks[ticks.length - 1] !== duration) ticks.push(duration);
+    return ticks.slice(0, 7);
   }
 
   function activePageTitle() {
@@ -636,26 +741,6 @@
     return "talking";
   }
 
-  function computeShotThemeAnalytics() {
-    const totals = SHOT_THEME_ORDER.reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-    const segments = Array.isArray(state.analysis.segments) ? state.analysis.segments : [];
-    segments.forEach((segment) => {
-      const duration = Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
-      totals[inferShotTheme(segment)] += duration;
-    });
-
-    const totalDuration = SHOT_THEME_ORDER.reduce((sum, key) => sum + totals[key], 0) || state.duration || 1;
-    const items = SHOT_THEME_ORDER.map((key) => ({
-      key,
-      ...SHOT_THEME_META[key],
-      seconds: totals[key],
-      percent: Math.round((totals[key] / totalDuration) * 100)
-    }));
-    const dominant = items.reduce((max, item) => (item.percent > max.percent ? item : max), items[0]);
-
-    return { items, dominant };
-  }
-
   function captureScrollState() {
     const main = document.querySelector(".main");
     const sidebar = document.querySelector(".sidebar-scroll");
@@ -695,6 +780,7 @@
             </div>
 
             <div class="nav-actions">
+              <span class="database-status is-${state.databaseState}" id="databaseStatus">${escapeHtml(state.databaseStatus)}</span>
               <button class="generate-button" id="generateNote" type="button" ${activeWorkspace().length === 0 || state.isGenerating ? "disabled" : ""}>
                 ${state.isGenerating ? '<span class="spinner"></span>' : icon("sparkles", 14)}
                 <span>${state.isGenerating ? "正在生成..." : "确认画布并生成总结"}</span>
@@ -731,9 +817,23 @@
                       ${renderTimelineBars()}
                       <span class="playhead" style="left:${progress}%"></span>
                     </div>
-                    <div class="progress-track" id="progressTrack">
-                      <span style="width:${progress}%"></span>
+                    <div class="timeline-ruler">
+                      ${timelineTicks().map((time) => `<button type="button" data-seek="${time}" style="left:${(time / state.duration) * 100}%">${formatTime(time)}</button>`).join("")}
                     </div>
+                  </div>
+                </section>
+
+                <section class="segment-timestamp-card" aria-label="智能切分时间戳">
+                  <h2>${icon("sparkles", 14)} 智能切分</h2>
+                  <div class="segment-strip" style="--progress:${progress}">
+                    ${renderSegmentStrip()}
+                    <span class="segment-strip-playhead" style="left:${progress}%"></span>
+                  </div>
+                  <div class="segment-ruler">
+                    ${timelineTicks().map((time) => `<button type="button" data-seek="${time}" style="left:${(time / state.duration) * 100}%">${formatTime(time)}</button>`).join("")}
+                  </div>
+                  <div class="timestamp-card-row">
+                    ${state.analysis.segments.map(renderTimestampCard).join("")}
                   </div>
                 </section>
 
@@ -755,7 +855,6 @@
                 <div class="builder-layout">
                   <section class="library-card">
                     <h2 class="eyebrow">${icon("hash", 12)} 知识积木库</h2>
-                    ${renderThemeAnalytics()}
                     <div class="brick-library">
                       ${libraryItems().map(renderLibraryBrick).join("")}
                     </div>
@@ -796,7 +895,7 @@
     bindEvents();
     restoreScrollState(scrollState);
     window.requestAnimationFrame(() => restoreScrollState(scrollState));
-    persistState();
+    if (!renderOptions.skipPersist) persistState();
   }
 
   function renderSidebar() {
@@ -815,9 +914,9 @@
           <button class="side-action" type="button">${icon("settings", 16)} <span>设置</span></button>
 
           <div class="notebook-section">
-            <div class="notebook-title">
+            <div class="notebook-title" data-new-folder>
               <span>笔记夹 (Notebooks)</span>
-              <button type="button" data-new-folder aria-label="新建笔记夹">${icon("plus", 14)}</button>
+              <button type="button" aria-label="新建笔记夹">${icon("plus", 14)}</button>
             </div>
 
             ${state.folders.map(renderFolder).join("")}
@@ -847,15 +946,22 @@
 
   function renderFolder(folder) {
     const folderMeta = ensureCanvasMeta(folder.id);
+    const isEditing = state.editingFolderId === folder.id;
     return `
       <div class="folder">
         <div class="folder-row-wrap">
-          <button class="folder-row" type="button" data-folder="${folder.id}">
-            <span class="folder-caret ${folder.isOpen ? "is-open" : ""}">${icon("chevronRight", 14)}</span>
-            <span class="page-dot" style="--dot-color:${folderMeta.labelColor}"></span>
-            ${folder.isOpen ? icon("folderOpen", 16) : icon("folder", 16)}
-            <span>${escapeHtml(folder.name)}</span>
-          </button>
+          ${
+            isEditing
+              ? `<input class="sidebar-edit-input" data-folder-edit="${folder.id}" value="${escapeHtml(folder.name)}" aria-label="编辑笔记夹名称">`
+              : `
+                <button class="folder-row" type="button" data-folder="${folder.id}">
+                  <span class="folder-caret ${folder.isOpen ? "is-open" : ""}">${icon("chevronRight", 14)}</span>
+                  <span class="page-dot" style="--dot-color:${folderMeta.labelColor}"></span>
+                  ${folder.isOpen ? icon("folderOpen", 16) : icon("folder", 16)}
+                  <span>${escapeHtml(folder.name)}</span>
+                </button>
+              `
+          }
           <div class="folder-tools">
             <select data-folder-color="${folder.id}" aria-label="修改笔记夹标签色">
               ${CANVAS_COLORS.map((color) => `<option value="${color}" ${folderMeta.labelColor === color ? "selected" : ""}>${color}</option>`).join("")}
@@ -883,14 +989,21 @@
 
   function renderPage(page) {
     const isActive = page.id === state.activePageId;
+    const isEditing = state.editingPageId === page.id;
     const blockCount = state.coreBrickByPage[page.id] ? 1 : 0;
     return `
       <div class="page-row-wrap ${isActive ? "is-active" : ""}">
-        <button class="page-row ${isActive ? "is-active" : ""}" type="button" data-page="${page.id}" data-page-drop="${page.id}" title="${isActive ? "当前页面" : "可将积木拖到此页面"}">
-          ${icon("fileText", 14)}
-          <span>${escapeHtml(page.title)}</span>
-          ${blockCount ? `<small>${blockCount}</small>` : ""}
-        </button>
+        ${
+          isEditing
+            ? `<input class="sidebar-edit-input page-edit-input" data-page-edit="${page.id}" value="${escapeHtml(page.title)}" aria-label="编辑笔记名称">`
+            : `
+              <button class="page-row ${isActive ? "is-active" : ""}" type="button" data-page="${page.id}" data-page-drop="${page.id}" title="${isActive ? "当前页面" : "可将积木拖到此页面"}">
+                ${icon("fileText", 14)}
+                <span>${escapeHtml(page.title)}</span>
+                ${blockCount ? `<small>${blockCount}</small>` : ""}
+              </button>
+            `
+        }
         <div class="page-tools">
           <button type="button" data-rename-page="${page.id}" aria-label="重命名笔记">${icon("edit", 11)}</button>
           <button type="button" data-delete-page="${page.id}" aria-label="删除笔记">${icon("trash", 11)}</button>
@@ -916,74 +1029,25 @@
     `;
   }
 
-  function renderThemeAnalytics() {
-    const { items, dominant } = computeShotThemeAnalytics();
-    const pointString = items
-      .map((item) => {
-        const axis = SHOT_THEME_META[item.key].axis;
-        const ratio = Math.max(0.08, item.percent / 100);
-        const x = 100 + (axis.x - 100) * ratio;
-        const y = 100 + (axis.y - 100) * ratio;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-
-    return `
-      <section class="theme-radar" aria-label="积木色彩雷达">
-        <div class="theme-radar-head">
-          <div>
-            <strong>积木色彩雷达</strong>
-            <span>Theme Analytics</span>
-          </div>
-          <em>${escapeHtml(dominant.label)} ${dominant.percent}%</em>
-        </div>
-
-        <div class="theme-radar-visual">
-          <svg class="radar-chart" viewBox="0 0 200 160" role="img" aria-label="谈话、特写、空镜头占比雷达图">
-            <polygon class="radar-grid outer" points="100,18 28,138 172,138"></polygon>
-            <polygon class="radar-grid middle" points="100,59 64,119 136,119"></polygon>
-            <polygon class="radar-grid inner" points="100,79 82,110 118,110"></polygon>
-            <line x1="100" y1="100" x2="100" y2="18"></line>
-            <line x1="100" y1="100" x2="28" y2="138"></line>
-            <line x1="100" y1="100" x2="172" y2="138"></line>
-            <polygon class="radar-area" points="${pointString}"></polygon>
-            ${items
-              .map((item) => {
-                const axis = SHOT_THEME_META[item.key].axis;
-                return `<circle class="radar-dot" style="--dot-color:${item.color}" cx="${axis.x}" cy="${axis.y}" r="4"></circle>`;
-              })
-              .join("")}
-          </svg>
-
-          <div class="theme-stack" aria-hidden="true">
-            ${items
-              .map(
-                (item) => `
-                  <span
-                    style="--theme-color:${item.color}; --theme-percent:${item.percent}%"
-                    title="${escapeHtml(item.label)} ${item.percent}%"
-                  ></span>
-                `
-              )
-              .join("")}
-          </div>
-        </div>
-
-        <div class="theme-metrics">
-          ${items
-            .map(
-              (item) => `
-                <div class="theme-metric">
-                  <span style="--theme-color:${item.color}"></span>
-                  <strong>${item.percent}%</strong>
-                  <em>${escapeHtml(item.label)}</em>
-                </div>
-              `
-            )
-            .join("")}
-        </div>
-      </section>
-    `;
+  function createFolderAndEdit() {
+    const newFolderId = `f-${Date.now()}`;
+    const newPageId = `p-${Date.now()}`;
+    state.folders = [
+      {
+        id: newFolderId,
+        name: "新建笔记夹",
+        isOpen: true,
+        pages: [{ id: newPageId, title: "未命名笔记" }]
+      },
+      ...state.folders
+    ];
+    state.notesByPage[newPageId] = "";
+    state.coreBrickByPage[newPageId] = null;
+    state.activePageId = newPageId;
+    state.editingFolderId = newFolderId;
+    state.editingPageId = "";
+    ensureCanvasMeta(newFolderId);
+    render();
   }
 
   function renderEmptyWorkbench() {
@@ -1033,7 +1097,7 @@
     ].filter(Boolean).join(" ");
     const premiseClass = state.prerequisiteSegmentId === brick.segmentId ? "is-premise" : "";
     const backlinks = computeBacklinks(brick);
-    const backlinkTitles = backlinks.map((item) => item.pageTitle).join("、");
+    const backlinkTitles = backlinks.map((item) => item.folderTitle).join("、");
 
     return `
       <div
@@ -1059,10 +1123,15 @@
               </button>
               <em>${escapeHtml(TYPE_LABELS[brick.type] || brick.type || "片段")}</em>
               <h3>${escapeHtml(brick.title)}</h3>
+              <button class="rename-button" type="button" data-rename="${brick.instanceId}" aria-label="重命名积木">${icon("edit", 10)}</button>
             </div>
             <p>${escapeHtml(brick.summary)}</p>
             <div class="tag-row">
               ${brick.keywords.map((keyword) => `<em>#${escapeHtml(keyword)}</em>`).join("")}
+            </div>
+            <div class="timestamp-row">
+              <button type="button" data-jump-time="${brick.coreTime ?? brick.start}">核心点 ${formatTime(brick.coreTime ?? brick.start)}</button>
+              ${(brick.knowledgePoints || [brick.start, brick.end]).slice(0, 4).map((time) => `<button type="button" data-jump-time="${time}">${formatTime(time)}</button>`).join("")}
             </div>
             ${
               backlinks.length
@@ -1321,7 +1390,7 @@
 
   function computeNebulaLinks(activeBrick) {
     return allWorkspaceBricks()
-      .filter((candidate) => candidate.pageId !== state.activePageId)
+      .filter((candidate) => candidate.folderId !== activeFolderId())
       .map((candidate) => {
         const matches = matchBrickTerms(activeBrick, candidate);
         const sameOrigin =
@@ -1335,22 +1404,22 @@
         };
       })
       .filter((candidate) => candidate.score > 0)
-      .sort((a, b) => (b.score - a.score) || a.pageTitle.localeCompare(b.pageTitle, "zh-CN"))
+      .sort((a, b) => (b.score - a.score) || a.folderTitle.localeCompare(b.folderTitle, "zh-CN"))
       .slice(0, 3);
   }
 
   function computeBacklinks(brick) {
-    const byPage = new Map();
+    const byFolder = new Map();
     computeNebulaLinks(brick).forEach((link) => {
-      if (!byPage.has(link.pageId)) {
-        byPage.set(link.pageId, {
-          pageId: link.pageId,
-          pageTitle: link.pageTitle,
+      if (!byFolder.has(link.folderId)) {
+        byFolder.set(link.folderId, {
+          folderId: link.folderId,
+          folderTitle: link.folderTitle,
           labels: link.labels
         });
       }
     });
-    return [...byPage.values()];
+    return [...byFolder.values()];
   }
 
   function computeRelations() {
@@ -1441,11 +1510,11 @@
     nodes.forEach((node, index) => {
       computeNebulaLinks(node).forEach((link, linkIndex) => {
         const labels = link.labels.length ? link.labels.join(" / ") : "语义相近";
-        relations.push(`知识星团：${node.title} 与「${link.pageTitle}」共享：${labels}。`);
+        relations.push(`知识星团：${node.title} 与「${link.folderTitle}」共享：${labels}。`);
         relationItems.push({
           type: "nebula",
           sourceNodeId: node.instanceId,
-          targetNodeId: `nebula:${link.pageId}:${link.instanceId}`
+          targetNodeId: `nebula:${link.folderId}:${link.instanceId}`
         });
         edges.push({
           x1: node.x + NODE_WIDTH / 2,
@@ -1454,12 +1523,39 @@
           y2: Math.max(22, Math.min(canvasSize.height - 22, node.y + 24 + (linkIndex * 24))),
           type: "nebula",
           strong: false,
-          label: `与「${link.pageTitle}」共享：${labels}`
+          label: `与「${link.folderTitle}」共享：${labels}`
         });
       });
     });
 
     return { relations, relationItems, edges };
+  }
+
+  function buildTemplateByRules(relationResult) {
+    const workspace = getSpatialWorkspace();
+    const relationLines = relationResult.relations.length ? relationResult.relations : ["当前尚未形成清晰关系，可继续拖拽形成从属/并列/递进/条件。"];
+    const stepLines = workspace.slice(0, 6).map((item, index) => `${index + 1}. 先学习「${item.title}」，重点看 ${formatTime(item.coreTime || item.start)}。`);
+    return [
+      "知识点整体梳理",
+      workspace.length
+        ? `本画布共 ${workspace.length} 个积木，主线为：${workspace.map((item) => item.title).join(" -> ")}。`
+        : "当前画布暂无积木。",
+      "",
+      "积木逻辑关系分析",
+      ...relationLines.slice(0, 8),
+      "",
+      "整体学习总结",
+      workspace.length
+        ? `建议优先掌握「${workspace[0].title}」并结合时间戳回看关键片段，再串联后续积木形成完整理解链路。`
+        : "请先导入视频并生成积木后再总结。",
+      "",
+      "分步骤学习建议",
+      ...(stepLines.length ? stepLines : ["1. 添加积木", "2. 调整关系", "3. 重新确认画布"])
+    ].join("\n");
+  }
+
+  function isTemplateValid(text) {
+    return ["知识点整体梳理", "积木逻辑关系分析", "整体学习总结", "分步骤学习建议"].every((title) => text.includes(title));
   }
 
   function renderGeneratedNote() {
@@ -1527,14 +1623,16 @@
             return `<path d="M320 180 C${left ? 250 : 390} 180 ${left ? 230 : 410} ${y2} ${x2} ${y2}"></path>`;
           }).join("")}
         </svg>
-        <div class="mind-map-center">${escapeHtml(view.center || "视频结构")}</div>
+        <div class="mind-map-center">
+          <span>${escapeHtml(view.center || "视频结构")}</span>
+        </div>
         <div class="mind-map-branches">
           ${branches.map((branch, index) => `
             <article class="mind-branch ${index % 2 === 0 ? "is-left" : "is-right"}">
               <strong>${escapeHtml(branch.title)}</strong>
-              <ul>
-                ${(branch.children || []).map((child) => `<li>${escapeHtml(child)}</li>`).join("")}
-              </ul>
+              <div class="mind-child-list">
+                ${(branch.children || []).slice(0, 3).map((child) => `<span>${escapeHtml(child)}</span>`).join("")}
+              </div>
             </article>
           `).join("")}
         </div>
@@ -1547,22 +1645,25 @@
     return `
       <div class="temporal-map-view summary-visual">
         <div class="route-title">${icon("map", 14)} <span>${escapeHtml(view.routeTitle || "视频路线")}</span></div>
-        <svg class="route-line" viewBox="0 0 700 140" preserveAspectRatio="none" aria-hidden="true">
-          <path d="M28 102 C120 18 210 120 306 54 S510 20 672 92"></path>
-        </svg>
         <div class="route-stations" style="--station-count:${Math.max(1, stations.length)}">
           ${stations.map((station, index) => `
             <article class="route-station" style="--station-index:${index}">
-              <span class="station-pin">${index + 1}</span>
+              <span class="station-pin"></span>
               <em>${escapeHtml(station.time)}</em>
               <strong>${escapeHtml(station.label)}</strong>
               <div class="station-tags">
                 <span>${escapeHtml(station.place)}</span>
                 <span>${escapeHtml(station.food)}</span>
               </div>
-              <p>${escapeHtml(station.description)}</p>
             </article>
           `).join("")}
+        </div>
+        <div class="route-map-strip" aria-hidden="true">
+          <svg class="route-map-line" viewBox="0 0 700 150" preserveAspectRatio="none">
+            <path class="route-land" d="M18 116 C104 86 172 128 244 92 S382 46 460 80 586 120 682 54"></path>
+            <path class="route-water" d="M24 126 C124 112 198 144 288 114 S436 74 548 104 640 96 684 78"></path>
+          </svg>
+          <span class="route-location-pin">${icon("map", 16)}</span>
         </div>
       </div>
     `;
@@ -1582,39 +1683,68 @@
         <div class="flowchart-nodes">
           ${nodes.map((node, index) => `
             <article class="flow-node is-${escapeHtml(node.type)}">
+              ${index > 0 ? `<span class="flow-connector" aria-hidden="true"></span>` : ""}
               ${index > 0 ? `<span class="flow-edge-label">${escapeHtml((edgeByTarget[node.id] || ["继续"]).join(" / "))}</span>` : ""}
               <strong>${escapeHtml(node.label)}</strong>
-              <p>${escapeHtml(node.description)}</p>
             </article>
           `).join("")}
         </div>
-        <div class="flow-edge-list">
-          ${edges.map((edge) => `<span>${escapeHtml(edge.from)} → ${escapeHtml(edge.to)} · ${escapeHtml(edge.label || "继续")}</span>`).join("")}
-        </div>
+        ${edges.length ? `
+          <div class="flow-edge-list">
+            ${edges.slice(0, 4).map((edge) => `<span>${escapeHtml(edge.label || "继续")}</span>`).join("")}
+          </div>
+        ` : ""}
       </div>
     `;
   }
 
   function renderTimelineBars() {
-    return Array.from({ length: 60 })
-      .map((_, index) => {
-        const ratio = index / 60;
-        const segment = state.analysis.segments.find(
-          (item) => (item.start / state.duration) <= ratio && (item.end / state.duration) > ratio
-        );
-        const height = Math.max(16, Math.round(((segment ? segment.intensity : 0.25) * 66) + ((index * 17) % 22)));
-        const isActive = ratio < state.currentTime / state.duration;
-        const color = segment ? (isActive ? segment.color : "rgba(255,255,255,0.22)") : "rgba(255,255,255,0.16)";
-        return `<button class="wave-bar" type="button" data-ratio="${ratio}" style="height:${height}%;background:${color}" aria-label="跳转到 ${formatTime(ratio * state.duration)}"></button>`;
+    const duration = Math.max(1, Number(state.duration || 1));
+    return state.analysis.segments
+      .map((segment) => {
+        const start = Math.max(0, Number(segment.start || 0));
+        const end = Math.min(duration, Math.max(start + 1, Number(segment.end || start + 1)));
+        const left = (start / duration) * 100;
+        const width = ((end - start) / duration) * 100;
+        const isActive = state.currentTime >= start && state.currentTime < end;
+        return `<button class="wave-bar ${isActive ? "is-active" : ""}" type="button" data-seek="${start}" style="--left:${left}%;--width:${width}%;--bar-color:${segment.color}" aria-label="跳转到 ${formatTime(start)} ${escapeHtml(segment.title)}"></button>`;
       })
       .join("");
+  }
+
+  function renderSegmentStrip() {
+    const duration = Math.max(1, Number(state.duration || 1));
+    return state.analysis.segments
+      .map((segment) => {
+        const start = Math.max(0, Number(segment.start || 0));
+        const end = Math.min(duration, Math.max(start + 1, Number(segment.end || start + 1)));
+        const left = (start / duration) * 100;
+        const width = ((end - start) / duration) * 100;
+        const isActive = state.currentTime >= start && state.currentTime < end;
+        return `<button class="segment-chip ${isActive ? "is-active" : ""}" type="button" data-seek="${start}" style="--left:${left}%;--width:${width}%;--chip-color:${segment.color}" aria-label="跳转到 ${formatTime(start)} ${escapeHtml(segment.title)}"></button>`;
+      })
+      .join("");
+  }
+
+  function renderTimestampCard(segment) {
+    const isActive = state.currentTime >= segment.start && state.currentTime < segment.end;
+    return `
+      <button
+        class="timestamp-card ${isActive ? "is-active" : ""}"
+        type="button"
+        data-seek="${segment.start}"
+        style="--card-color:${segment.color}"
+      >
+        <strong>${formatTime(segment.start)}</strong>
+        <span>${escapeHtml(segment.title)}</span>
+      </button>
+    `;
   }
 
   function bindEvents() {
     const video = document.getElementById("mainVideo");
     const playToggle = document.getElementById("playToggle");
     const timeline = document.getElementById("timeline");
-    const progressTrack = document.getElementById("progressTrack");
     const generateButton = document.getElementById("generateNote");
     const demoForm = document.getElementById("demoForm");
     const localVideo = document.getElementById("localVideo");
@@ -1683,11 +1813,12 @@
       const rect = timeline.getBoundingClientRect();
       jumpTo(((event.clientX - rect.left) / rect.width) * state.duration);
     });
-    progressTrack.addEventListener("click", (event) => {
-      const rect = progressTrack.getBoundingClientRect();
-      jumpTo(((event.clientX - rect.left) / rect.width) * state.duration);
+    document.querySelectorAll("[data-seek]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        jumpTo(Number(button.dataset.seek || 0));
+      });
     });
-
     generateButton.addEventListener("click", generateNote);
     demoForm.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1715,6 +1846,26 @@
       render();
     });
 
+    document.querySelector(".notebook-section")?.addEventListener("click", (event) => {
+      const newFolderTrigger = event.target.closest("[data-new-folder]");
+      if (newFolderTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        createFolderAndEdit();
+        return;
+      }
+
+      const renamePageTrigger = event.target.closest("[data-rename-page]");
+      if (renamePageTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.editingPageId = renamePageTrigger.dataset.renamePage;
+        state.editingFolderId = "";
+        render();
+        return;
+      }
+    });
+
     document.querySelectorAll("[data-folder]").forEach((button) => {
       button.addEventListener("click", () => {
         state.folders = state.folders.map((folder) =>
@@ -1725,37 +1876,18 @@
     });
 
     document.querySelectorAll("[data-new-folder]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const name = window.prompt("请输入新笔记夹名称", "新建笔记夹");
-        if (!name || !name.trim()) return;
-        const newFolderId = `f-${Date.now()}`;
-        const newPageId = `p-${Date.now()}`;
-        state.folders = [
-          {
-            id: newFolderId,
-            name: name.trim(),
-            isOpen: true,
-            pages: [{ id: newPageId, title: "未命名笔记" }]
-          },
-          ...state.folders
-        ];
-        state.notesByPage[newPageId] = "";
-        state.coreBrickByPage[newPageId] = null;
-        state.activePageId = newPageId;
-        ensureCanvasMeta(newFolderId);
-        render();
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        createFolderAndEdit();
       });
     });
 
     document.querySelectorAll("[data-rename-folder]").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        const folderId = button.dataset.renameFolder;
-        const folder = state.folders.find((item) => item.id === folderId);
-        if (!folder) return;
-        const name = window.prompt("重命名笔记夹", folder.name);
-        if (!name || !name.trim()) return;
-        state.folders = state.folders.map((item) => item.id === folderId ? { ...item, name: name.trim() } : item);
+        state.editingFolderId = button.dataset.renameFolder;
+        state.editingPageId = "";
         render();
       });
     });
@@ -1808,6 +1940,29 @@
       });
     });
 
+    document.querySelectorAll("[data-folder-edit]").forEach((input) => {
+      const commit = () => {
+        const folderId = input.dataset.folderEdit;
+        const name = input.value.trim() || "未命名笔记夹";
+        state.folders = state.folders.map((folder) => folder.id === folderId ? { ...folder, name } : folder);
+        state.editingFolderId = "";
+        render();
+      };
+      input.addEventListener("click", (event) => event.stopPropagation());
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") commit();
+        if (event.key === "Escape") {
+          state.editingFolderId = "";
+          render();
+        }
+      });
+      window.requestAnimationFrame(() => {
+        input.focus();
+        input.select();
+      });
+    });
+
     document.querySelectorAll("[data-page]").forEach((button) => {
       button.addEventListener("click", () => {
         state.activePageId = button.dataset.page;
@@ -1844,16 +1999,38 @@
     document.querySelectorAll("[data-rename-page]").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        const pageId = button.dataset.renamePage;
-        const page = state.folders.flatMap((folder) => folder.pages).find((item) => item.id === pageId);
-        if (!page) return;
-        const title = window.prompt("重命名笔记", page.title);
-        if (!title || !title.trim()) return;
+        state.editingPageId = button.dataset.renamePage;
+        state.editingFolderId = "";
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-page-edit]").forEach((input) => {
+      const commit = () => {
+        const pageId = input.dataset.pageEdit;
+        const title = input.value.trim() || "未命名笔记";
         state.folders = state.folders.map((folder) => ({
           ...folder,
-          pages: folder.pages.map((item) => item.id === pageId ? { ...item, title: title.trim() } : item)
+          pages: folder.pages.map((page) => page.id === pageId ? { ...page, title } : page)
         }));
+        if (pageId === state.activePageId) {
+          setActiveWorkspace(activeWorkspace().map((brick) => ({ ...brick, sourcePageTitle: title })));
+        }
+        state.editingPageId = "";
         render();
+      };
+      input.addEventListener("click", (event) => event.stopPropagation());
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") commit();
+        if (event.key === "Escape") {
+          state.editingPageId = "";
+          render();
+        }
+      });
+      window.requestAnimationFrame(() => {
+        input.focus();
+        input.select();
       });
     });
 
@@ -1891,10 +2068,6 @@
         state.prerequisiteSegmentId = "";
         render();
       });
-    });
-
-    document.querySelectorAll("[data-seek]").forEach((button) => {
-      button.addEventListener("click", () => jumpTo(Number(button.dataset.seek)));
     });
 
     document.querySelectorAll("[data-jump-time]").forEach((button) => {
@@ -2112,7 +2285,9 @@
     const sourceBrick = activeWorkspace().find((item) => item.instanceId === instanceId);
     if (!sourceBrick) return;
 
-    const targetWorkspace = state.workspacesByPage[targetPageId] || [];
+    const targetFolder = folderByPageId(targetPageId);
+    if (!targetFolder) return;
+    const targetWorkspace = state.workspacesByPage[targetFolder.id] || [];
     const originId = sourceBrick.originSegmentId || sourceBrick.segmentId;
     if (targetWorkspace.some((item) => (item.originSegmentId || item.segmentId) === originId)) return;
 
@@ -2123,7 +2298,7 @@
       y: 18 + Math.floor(index / columns) * (NODE_HEIGHT + 28)
     };
 
-    state.workspacesByPage[targetPageId] = [
+    state.workspacesByPage[targetFolder.id] = [
       ...targetWorkspace,
       {
         ...sourceBrick,
@@ -2449,14 +2624,49 @@
 
     try {
       const relationResult = computeRelations();
-      const result = await postJson("/api/generate-summary", {
-        fileName: state.analysis.videoTitle,
-        summary: state.analysisSummary,
-        segments: getSpatialWorkspace(),
-        relations: relationResult.relations
-      });
+      const fallbackText = buildTemplateByRules(relationResult);
+      let finalText = fallbackText;
+      let result = null;
 
-      state.generatedNote = normalizeGeneratedNote(result.note || buildFallbackStructuredNote());
+      try {
+        result = await postJson("/api/generate-summary", {
+          fileName: (activeFolder() && activeFolder().name) || state.analysis.videoTitle,
+          summary: state.analysisSummary,
+          segments: getSpatialWorkspace(),
+          relations: relationResult.relations
+        });
+        const aiText = result && result.note
+          ? [
+            "知识点整体梳理",
+            result.note.core || "",
+            "",
+            "积木逻辑关系分析",
+            ...(Array.isArray(result.note.steps) ? result.note.steps : []),
+            "",
+            "整体学习总结",
+            result.note.title || "",
+            "",
+            "分步骤学习建议",
+            result.note.action || ""
+          ].join("\n")
+          : "";
+        if (isTemplateValid(aiText)) finalText = aiText;
+      } catch (error) {
+        result = null;
+      }
+
+      activeCanvasMeta().lastAnalysisText = finalText;
+      const key = todayKey();
+      const folderId = activeFolderId();
+      const exists = (state.checkinsByDate[key] || []).some((item) => item.folderId === folderId);
+      if (!exists) {
+        state.checkinsByDate[key] = [...(state.checkinsByDate[key] || []), {
+          folderId,
+          labelColor: activeCanvasMeta().labelColor
+        }];
+      }
+
+      state.generatedNote = normalizeGeneratedNote((result && result.note) || buildFallbackStructuredNote());
       state.summaryViewMode = state.generatedNote.mode;
     } catch (error) {
       const fallback = buildFallbackStructuredNote();
@@ -2483,7 +2693,7 @@
     );
     state.activePageId = newPage.id;
     state.notesByPage[newPage.id] = generatedNoteMarkdown(note, state.summaryViewMode || note.mode);
-    state.workspacesByPage[newPage.id] = [];
+    state.coreBrickByPage[newPage.id] = null;
     state.summaryViewMode = "";
     render();
   }
@@ -2541,7 +2751,17 @@
     state.duration = analysis.duration;
     state.currentTime = nextOptions.keepCurrentTime ? state.currentTime : 0;
     state.isPlaying = false;
-    setActiveWorkspace([]);
+    const coreBrick = buildSeedBricksFromAnalysis(analysis);
+    const pageId = state.activePageId;
+    const folderId = activeFolderId();
+    state.coreBrickByPage[pageId] = coreBrick;
+    const workspace = state.workspacesByPage[folderId] || [];
+    const withoutCurrentVideo = workspace.filter((item) => item.sourcePageId !== pageId);
+    state.workspacesByPage[folderId] = [...withoutCurrentVideo, {
+      ...coreBrick,
+      x: coreBrick.x ?? nextAutoPosition().x,
+      y: coreBrick.y ?? nextAutoPosition().y
+    }];
     state.prerequisiteSegmentId = "";
     state.relationSignatures = new Set();
     state.nodePulseUntil = {};
@@ -2551,7 +2771,34 @@
     state.backendSource = analysis.backendSource || "mock";
     state.importStatus = nextOptions.status || "视频与积木笔记已载入。";
     state.importError = "";
+    activeCanvasMeta().lastAnalysisText = buildTemplateByRules(computeRelations());
     render();
+  }
+
+  function buildSeedBricksFromAnalysis(analysis) {
+    const sourceSegments = Array.isArray(analysis.segments) ? analysis.segments : [];
+    const duration = Math.max(1, Number(analysis.duration || 180));
+    return {
+      id: `core-${state.activePageId}`,
+      segmentId: `core-${state.activePageId}`,
+      originSegmentId: `core-${state.activePageId}`,
+      sourcePageId: state.activePageId,
+      sourcePageTitle: activePageTitle(),
+      copiedFromInstanceId: null,
+      instanceId: Date.now(),
+      start: 0,
+      end: Math.min(duration, Math.max(20, Math.round(duration * 0.2))),
+      coreTime: Math.min(duration, Math.round(duration / 2)),
+      knowledgePoints: sourceSegments.slice(0, 4).map((item) => Number(item.start || 0)),
+      title: `${analysis.videoTitle || "视频"}核心知识积木`,
+      type: "core",
+      color: "#fde68a",
+      intensity: 0.88,
+      summary: analysis.coreIdea || "导入视频后生成的核心理解枢纽。",
+      keywords: (sourceSegments[0] && sourceSegments[0].keywords) ? sourceSegments[0].keywords.slice(0, 4) : ["核心", "主线"],
+      x: 18,
+      y: 18
+    };
   }
 
   function syncStatusOnly() {
@@ -2561,6 +2808,13 @@
     status.classList.toggle("is-error", Boolean(state.importError));
   }
 
+  function syncDatabaseStatus() {
+    const status = document.getElementById("databaseStatus");
+    if (!status) return;
+    status.textContent = state.databaseStatus;
+    status.className = `database-status is-${state.databaseState}`;
+  }
+
   function syncChrome() {
     const active = activeSegment();
     const progress = Math.min(100, Math.max(0, (state.currentTime / state.duration) * 100));
@@ -2568,7 +2822,6 @@
     const timeLabel = document.querySelector(".time-label");
     const activePill = document.querySelector(".active-pill");
     const playhead = document.querySelector(".playhead");
-    const progressFill = document.querySelector(".progress-track span");
 
     if (playToggle) {
       playToggle.innerHTML = state.isPlaying ? icon("pause", 22) : icon("play", 22);
@@ -2581,21 +2834,32 @@
       activePill.style.setProperty("--pill-color", active.color);
     }
     if (playhead) playhead.style.left = `${progress}%`;
-    if (progressFill) progressFill.style.width = `${progress}%`;
-
+    document.querySelectorAll(".segment-strip-playhead").forEach((element) => {
+      element.style.left = `${progress}%`;
+    });
     document.querySelectorAll(".wave-bar").forEach((bar, index) => {
-      const ratio = index / 60;
-      const segment = state.analysis.segments.find(
-        (item) => (item.start / state.duration) <= ratio && (item.end / state.duration) > ratio
-      );
-      const isActive = ratio < state.currentTime / state.duration;
-      bar.style.background = segment
-        ? isActive
-          ? segment.color
-          : "rgba(255,255,255,0.22)"
-        : "rgba(255,255,255,0.16)";
+      const segment = state.analysis.segments[index];
+      const isActive = segment && state.currentTime >= segment.start && state.currentTime < segment.end;
+      bar.classList.toggle("is-active", Boolean(isActive));
+    });
+    document.querySelectorAll(".segment-chip, .timestamp-card").forEach((element, index) => {
+      const segment = state.analysis.segments[index % state.analysis.segments.length];
+      const isActive = segment && state.currentTime >= segment.start && state.currentTime < segment.end;
+      element.classList.toggle("is-active", Boolean(isActive));
     });
   }
 
-  render({ preserveScroll: false });
+  hydrateState();
+  ensureCanvasMeta(activeFolderId());
+  if (!state.coreBrickByPage[state.activePageId]) {
+    const initBrick = buildSeedBricksFromAnalysis(state.analysis);
+    const folderId = activeFolderId();
+    state.coreBrickByPage[state.activePageId] = initBrick;
+    if (!Array.isArray(state.workspacesByPage[folderId])) state.workspacesByPage[folderId] = [];
+    if (!state.workspacesByPage[folderId].some((item) => item.sourcePageId === state.activePageId)) {
+      state.workspacesByPage[folderId].push({ ...initBrick });
+    }
+  }
+  render({ preserveScroll: false, skipPersist: true });
+  hydrateStateFromDatabase();
 })();

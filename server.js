@@ -1,4 +1,4 @@
-const { createWriteStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync } = require("fs");
+const { createWriteStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } = require("fs");
 const { execFile } = require("child_process");
 const { createServer } = require("http");
 const { extname, join, normalize, relative } = require("path");
@@ -9,6 +9,8 @@ const { URL } = require("url");
 
 const rootDir = __dirname;
 const importsDir = join(rootDir, "assets", "imports");
+const dataDir = join(rootDir, "data");
+const databasePath = join(dataDir, "local-db.json");
 const port = Number(process.env.PORT || 4287);
 const maxDownloadBytes = 300 * 1024 * 1024;
 const maxUploadBytes = 500 * 1024 * 1024;
@@ -32,6 +34,12 @@ const segmentTypeColors = {
 };
 const execFileAsync = promisify(execFile);
 
+const defaultDatabase = {
+  version: 1,
+  updatedAt: "",
+  appState: null
+};
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -50,6 +58,37 @@ const mimeTypes = {
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(payload));
+}
+
+function ensureDataDir() {
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+}
+
+function readDatabase() {
+  ensureDataDir();
+  if (!existsSync(databasePath)) {
+    writeFileSync(databasePath, JSON.stringify(defaultDatabase, null, 2));
+    return { ...defaultDatabase };
+  }
+
+  try {
+    return { ...defaultDatabase, ...JSON.parse(readFileSync(databasePath, "utf8")) };
+  } catch (error) {
+    return { ...defaultDatabase, corruptedAt: new Date().toISOString() };
+  }
+}
+
+function writeDatabase(nextDatabase) {
+  ensureDataDir();
+  const payload = {
+    ...defaultDatabase,
+    ...nextDatabase,
+    updatedAt: new Date().toISOString()
+  };
+  writeFileSync(databasePath, JSON.stringify(payload, null, 2));
+  return payload;
 }
 
 function isDirectVideoPath(url) {
@@ -882,6 +921,33 @@ async function handleGenerateSummary(request, response) {
   }
 }
 
+async function handleGetState(response) {
+  sendJson(response, 200, readDatabase());
+}
+
+async function handleSaveState(request, response) {
+  let payload;
+  try {
+    payload = await readJsonBody(request, maxJsonBodyBytes);
+  } catch (error) {
+    sendJson(response, 400, { error: "本地数据库保存请求格式不正确。" });
+    return;
+  }
+
+  const appState = payload && payload.appState && typeof payload.appState === "object" ? payload.appState : null;
+  if (!appState) {
+    sendJson(response, 400, { error: "缺少可保存的 appState。" });
+    return;
+  }
+
+  const saved = writeDatabase({ appState });
+  sendJson(response, 200, {
+    ok: true,
+    updatedAt: saved.updatedAt,
+    databasePath
+  });
+}
+
 function serveStatic(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   const pathname = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
@@ -899,13 +965,48 @@ function serveStatic(request, response) {
     return;
   }
 
+  const contentType = mimeTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
+  const range = request.headers.range;
+  const isVideo = contentType.startsWith("video/");
+
+  if (isVideo && range) {
+    const fileSize = statSync(filePath).size;
+    const [startText, endText] = range.replace(/bytes=/, "").split("-");
+    const start = Math.max(0, Number(startText || 0));
+    const end = Math.min(fileSize - 1, endText ? Number(endText) : fileSize - 1);
+
+    response.writeHead(206, {
+      "Content-Type": contentType,
+      "Content-Length": end - start + 1,
+      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+      "Accept-Ranges": "bytes"
+    });
+    require("fs").createReadStream(filePath, { start, end }).pipe(response);
+    return;
+  }
+
   response.writeHead(200, {
-    "Content-Type": mimeTypes[extname(filePath).toLowerCase()] || "application/octet-stream"
+    "Content-Type": contentType,
+    "Accept-Ranges": isVideo ? "bytes" : "none"
   });
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
   require("fs").createReadStream(filePath).pipe(response);
 }
 
 const server = createServer((request, response) => {
+  if (request.method === "GET" && request.url === "/api/state") {
+    handleGetState(response);
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/api/state") {
+    handleSaveState(request, response);
+    return;
+  }
+
   if (request.method === "POST" && request.url === "/api/import-url") {
     handleImportUrl(request, response);
     return;

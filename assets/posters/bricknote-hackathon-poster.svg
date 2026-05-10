@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2400" viewBox="0 0 1600 2400" role="img" aria-labelledby="title desc">
+  <title id="title">BrickNote Hackathon Poster</title>
+  <desc id="desc">A polished hackathon poster for BrickNote, showing video clips transformed into modular AI notes, mind maps, timelines, and flowcharts.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbfafb"/>
+      <stop offset=".46" stop-color="#f3f7ff"/>
+      <stop offset="1" stop-color="#fff7ed"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#facc15"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16a34a"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#d946ef"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#0f172a" flood-opacity=".16"/>
+    </filter>
+    <filter id="smallShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0f172a" flood-opacity=".12"/>
+    </filter>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <path d="M64 0H0V64" fill="none" stroke="#d8dee9" stroke-width="1" opacity=".45"/>
+    </pattern>
+    <style>
+      .sans{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,"Noto Sans SC","Microsoft YaHei",sans-serif}
+      .title{font-weight:950;letter-spacing:0}
+      .heavy{font-weight:900}
+      .bold{font-weight:800}
+      .medium{font-weight:650}
+      .muted{fill:#64748b}
+      .ink{fill:#111827}
+      .line{stroke:#d8dee9;stroke-width:2}
+      .tiny{font-size:25px}
+      .small{font-size:32px}
+      .body{font-size:39px}
+      .label{font-size:30px;font-weight:850}
+    </style>
+  </defs>
+
+  <rect width="1600" height="2400" fill="url(#bg)"/>
+  <rect width="1600" height="2400" fill="url(#grid)" opacity=".42"/>
+  <path d="M-120 380C190 180 420 278 628 126C822-16 1054 10 1298 178C1496 314 1614 374 1730 300V-80H-120Z" fill="#e0f2fe" opacity=".72"/>
+  <path d="M-80 2170C194 2008 420 2094 662 1966C944 1818 1184 1904 1680 1744V2480H-80Z" fill="#ffedd5" opacity=".78"/>
+
+  <g transform="translate(110 96)">
+    <rect x="0" y="0" width="224" height="64" rx="18" fill="#111827"/>
+    <rect x="16" y="15" width="34" height="34" rx="8" fill="url(#blue)"/>
+    <text class="sans heavy" x="64" y="42" font-size="27" fill="#fff">BrickNote</text>
+    <text class="sans bold" x="1130" y="41" font-size="28" fill="#1f2937">Hackathon Demo</text>
+  </g>
+
+  <g class="sans" transform="translate(110 230)">
+    <text class="title ink" x="0" y="0" font-size="134">把视频拆成</text>
+    <text class="title ink" x="0" y="150" font-size="134">会生长的知识积木</text>
+    <text class="body muted medium" x="4" y="246">AI 自动理解视频内容，切片、标注、重组，生成可拖拽的笔记、地图与流程。</text>
+    <g transform="translate(0 314)">
+      <rect x="0" y="0" width="184" height="54" rx="16" fill="#dbeafe"/>
+      <text class="label" x="30" y="37" fill="#1d4ed8">视频解析</text>
+      <rect x="204" y="0" width="184" height="54" rx="16" fill="#dcfce7"/>
+      <text class="label" x="234" y="37" fill="#15803d">积木笔记</text>
+      <rect x="408" y="0" width="184" height="54" rx="16" fill="#ffedd5"/>
+      <text class="label" x="438" y="37" fill="#c2410c">结构总结</text>
+    </g>
+  </g>
+
+  <g transform="translate(132 720)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="1336" height="870" rx="38" fill="#ffffff"/>
+    <rect x="0" y="0" width="1336" height="870" rx="38" fill="none" stroke="#e5e7eb" stroke-width="2"/>
+    <rect x="0" y="0" width="1336" height="96" rx="38" fill="#111827"/>
+    <path d="M0 60h1336v60H0z" fill="#111827"/>
+    <circle cx="50" cy="49" r="12" fill="#ef4444"/>
+    <circle cx="88" cy="49" r="12" fill="#f59e0b"/>
+    <circle cx="126" cy="49" r="12" fill="#22c55e"/>
+    <text class="sans bold" x="190" y="60" font-size="31" fill="#f8fafc">AI Video Workspace</text>
+
+    <g transform="translate(42 136)">
+      <rect x="0" y="0" width="415" height="650" rx="24" fill="#0f172a"/>
+      <rect x="24" y="24" width="367" height="216" rx="20" fill="url(#blue)"/>
+      <path d="M172 84l92 54-92 54z" fill="#ffffff" opacity=".92"/>
+      <rect x="24" y="272" width="367" height="22" rx="11" fill="#334155"/>
+      <rect x="24" y="272" width="238" height="22" rx="11" fill="#60a5fa"/>
+      <g transform="translate(24 334)">
+        <rect x="0" y="0" width="110" height="82" rx="16" fill="#1d4ed8"/>
+        <rect x="128" y="0" width="110" height="82" rx="16" fill="#16a34a"/>
+        <rect x="256" y="0" width="110" height="82" rx="16" fill="#f97316"/>
+        <rect x="0" y="106" width="110" height="82" rx="16" fill="#7c3aed"/>
+        <rect x="128" y="106" width="110" height="82" rx="16" fill="#ef4444"/>
+        <rect x="256" y="106" width="110" height="82" rx="16" fill="#0ea5e9"/>
+      </g>
+      <text class="sans small bold" x="24" y="590" fill="#e2e8f0">上传视频</text>
+      <text class="sans tiny medium" x="24" y="628" fill="#94a3b8">自动切片 · 关键词 · 镜头类型</text>
+    </g>
+
+    <g transform="translate(515 137)">
+      <rect x="0" y="0" width="360" height="145" rx="22" fill="#eff6ff" stroke="#bfdbfe" stroke-width="2"/>
+      <rect x="22" y="22" width="50" height="50" rx="13" fill="url(#blue)"/>
+      <text class="sans label" x="92" y="52" fill="#1e40af">开场钩子</text>
+      <text class="sans tiny medium" x="92" y="92" fill="#64748b">0:00-0:18 · 城市记忆</text>
+      <path d="M25 108h278" stroke="#93c5fd" stroke-width="10" stroke-linecap="round"/>
+
+      <rect x="426" y="0" width="360" height="145" rx="22" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="2"/>
+      <rect x="448" y="22" width="50" height="50" rx="13" fill="url(#green)"/>
+      <text class="sans label" x="518" y="52" fill="#166534">场景营造</text>
+      <text class="sans tiny medium" x="518" y="92" fill="#64748b">0:18-0:58 · 环境空镜</text>
+      <path d="M451 108h278" stroke="#86efac" stroke-width="10" stroke-linecap="round"/>
+
+      <rect x="0" y="188" width="360" height="145" rx="22" fill="#fff7ed" stroke="#fed7aa" stroke-width="2"/>
+      <rect x="22" y="210" width="50" height="50" rx="13" fill="url(#warm)"/>
+      <text class="sans label" x="92" y="240" fill="#9a3412">重点拆解</text>
+      <text class="sans tiny medium" x="92" y="280" fill="#64748b">0:58-1:36 · 可复用结构</text>
+      <path d="M25 296h278" stroke="#fdba74" stroke-width="10" stroke-linecap="round"/>
+
+      <rect x="426" y="188" width="360" height="145" rx="22" fill="#faf5ff" stroke="#e9d5ff" stroke-width="2"/>
+      <rect x="448" y="210" width="50" height="50" rx="13" fill="url(#violet)"/>
+      <text class="sans label" x="518" y="240" fill="#6b21a8">生成笔记</text>
+      <text class="sans tiny medium" x="518" y="280" fill="#64748b">拖拽组合 · 一键总结</text>
+      <path d="M451 296h278" stroke="#d8b4fe" stroke-width="10" stroke-linecap="round"/>
+
+      <g transform="translate(28 426)">
+        <path d="M164 142C216 62 324 42 422 98C526 158 616 126 724 36" fill="none" stroke="#cbd5e1" stroke-width="8" stroke-linecap="round"/>
+        <circle cx="164" cy="142" r="48" fill="#2563eb"/>
+        <circle cx="422" cy="98" r="48" fill="#16a34a"/>
+        <circle cx="724" cy="36" r="48" fill="#f97316"/>
+        <circle cx="314" cy="250" r="48" fill="#7c3aed"/>
+        <path d="M190 166L288 226M450 126L682 56" stroke="#cbd5e1" stroke-width="8" stroke-linecap="round"/>
+        <text class="sans tiny bold" x="116" y="222" fill="#1e3a8a">导图</text>
+        <text class="sans tiny bold" x="378" y="178" fill="#166534">时空</text>
+        <text class="sans tiny bold" x="674" y="116" fill="#9a3412">流程</text>
+      </g>
+    </g>
+  </g>
+
+  <g class="sans" transform="translate(132 1705)">
+    <text class="heavy ink" x="0" y="0" font-size="62">从一条视频，到三种结构化视图</text>
+    <g transform="translate(0 92)" filter="url(#smallShadow)">
+      <rect x="0" y="0" width="404" height="282" rx="30" fill="#ffffff"/>
+      <rect x="32" y="34" width="72" height="72" rx="20" fill="#dbeafe"/>
+      <path d="M68 58v24M56 70h24M49 92h38" stroke="#2563eb" stroke-width="8" stroke-linecap="round"/>
+      <text class="bold" x="32" y="148" font-size="39" fill="#111827">思维导图</text>
+      <text class="medium muted" x="32" y="198" font-size="29">围绕核心观点展开分支，</text>
+      <text class="medium muted" x="32" y="235" font-size="29">适合快速复盘内容结构。</text>
+    </g>
+    <g transform="translate(466 92)" filter="url(#smallShadow)">
+      <rect x="0" y="0" width="404" height="282" rx="30" fill="#ffffff"/>
+      <rect x="32" y="34" width="72" height="72" rx="20" fill="#dcfce7"/>
+      <path d="M48 84C70 42 96 55 95 92M48 84h66" fill="none" stroke="#16a34a" stroke-width="8" stroke-linecap="round"/>
+      <text class="bold" x="32" y="148" font-size="39" fill="#111827">时空地图</text>
+      <text class="medium muted" x="32" y="198" font-size="29">按时间与场景串联线索，</text>
+      <text class="medium muted" x="32" y="235" font-size="29">适合探店、旅行和故事片。</text>
+    </g>
+    <g transform="translate(932 92)" filter="url(#smallShadow)">
+      <rect x="0" y="0" width="404" height="282" rx="30" fill="#ffffff"/>
+      <rect x="32" y="34" width="72" height="72" rx="20" fill="#ffedd5"/>
+      <path d="M50 54h36v28H50zM68 82v20M50 102h36" fill="none" stroke="#f97316" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+      <text class="bold" x="32" y="148" font-size="39" fill="#111827">逻辑流程</text>
+      <text class="medium muted" x="32" y="198" font-size="29">把教程、决策和转化路径，</text>
+      <text class="medium muted" x="32" y="235" font-size="29">整理成可执行步骤。</text>
+    </g>
+  </g>
+
+  <g class="sans" transform="translate(132 2170)">
+    <rect x="0" y="0" width="1336" height="122" rx="34" fill="#111827"/>
+    <text class="bold" x="44" y="76" font-size="42" fill="#ffffff">BrickNote</text>
+    <text class="medium" x="292" y="76" font-size="32" fill="#cbd5e1">像搭积木一样整理视频知识</text>
+    <rect x="1016" y="31" width="276" height="60" rx="20" fill="#ffffff"/>
+    <text class="bold" x="1066" y="72" font-size="28" fill="#111827">Try the Demo</text>
+  </g>
+</svg>
