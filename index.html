@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>视频创作副驾 Demo</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body data-theme="idle">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">X</span>
+          <div>
+            <p class="eyebrow">Douyin / Local Video</p>
+            <h1>视频创作副驾</h1>
+          </div>
+        </div>
+
+        <form class="source-form" id="douyinForm">
+          <label class="input-wrap" for="douyinUrl">
+            <span>抖音链接</span>
+            <input
+              id="douyinUrl"
+              type="url"
+              placeholder="粘贴抖音分享链接，演示导入"
+              autocomplete="off"
+            >
+          </label>
+          <button class="primary-action" type="submit">导入演示</button>
+          <label class="upload-action" for="localVideo">
+            <input id="localVideo" type="file" accept="video/mp4,video/webm,video/quicktime,video/*">
+            上传本地视频
+          </label>
+        </form>
+      </header>
+
+      <main class="workspace" id="workspace" aria-live="polite">
+        <section class="hero-panel empty-state" id="emptyState">
+          <div>
+            <p class="eyebrow">Non-linear Browsing</p>
+            <h2>把视频变成能浏览、能跳转、能拆解的视觉索引。</h2>
+            <p>
+              粘贴抖音链接进入演示模式，或上传本地视频。AI 分析先用 mock 数据驱动，确保黑客松现场稳定展示。
+            </p>
+          </div>
+        </section>
+
+        <section class="workbench" id="workbench" hidden>
+          <div class="video-column">
+            <div class="video-frame">
+              <video id="mainVideo" controls playsinline preload="metadata"></video>
+              <div class="video-fallback" id="videoFallback">
+                <span>等待视频源</span>
+              </div>
+            </div>
+
+            <section class="timeline-panel" aria-label="X-Ray Timeline">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">X-Ray Timeline</p>
+                  <h2>信息图谱进度条</h2>
+                </div>
+                <div class="legend" id="timelineLegend"></div>
+              </div>
+              <div class="timeline-wrap">
+                <canvas id="xrayTimeline" height="128"></canvas>
+                <div class="playhead" id="playhead"></div>
+                <div class="timeline-tooltip" id="timelineTooltip" hidden></div>
+              </div>
+            </section>
+          </div>
+
+          <aside class="insight-panel">
+            <div>
+              <p class="eyebrow" id="sourceLabel">Source</p>
+              <h2 id="videoTitle">等待导入</h2>
+            </div>
+            <div class="metric-grid">
+              <div>
+                <span>章节</span>
+                <strong id="segmentCount">0</strong>
+              </div>
+              <div>
+                <span>时长</span>
+                <strong id="durationLabel">0:00</strong>
+              </div>
+            </div>
+            <div class="current-insight">
+              <span id="currentType">Idle</span>
+              <h3 id="currentTitle">选择一个视频开始</h3>
+              <p id="currentSummary">时间轴和卡片会跟随播放进度自动高亮。</p>
+            </div>
+            <button class="secondary-action" id="generateDescription" type="button">
+              一键生成简介
+            </button>
+            <div class="description-box" id="descriptionBox">
+              <span>生成结果</span>
+              <p id="generatedDescription">点击按钮后，摘要会汇聚成可复制的视频简介。</p>
+            </div>
+          </aside>
+        </section>
+
+        <section class="storyboard-section" id="storyboardSection" hidden>
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Storyboard Grid</p>
+              <h2>卡片积木式摘要</h2>
+            </div>
+            <p class="section-note">点击卡片跳转；悬停先展示放大反馈，后续可接入静音预览。</p>
+          </div>
+          <div class="storyboard-grid" id="storyboardGrid"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="mock-analysis.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
