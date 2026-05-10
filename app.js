@@ -697,7 +697,7 @@
             <div class="nav-actions">
               <button class="generate-button" id="generateNote" type="button" ${activeWorkspace().length === 0 || state.isGenerating ? "disabled" : ""}>
                 ${state.isGenerating ? '<span class="spinner"></span>' : icon("sparkles", 14)}
-                <span>${state.isGenerating ? "正在生成..." : "生成深度总结"}</span>
+                <span>${state.isGenerating ? "正在生成..." : "确认画布并生成总结"}</span>
               </button>
               <button class="icon-button ghost" type="button" aria-label="收藏">${icon("star", 18)}</button>
               <button class="icon-button ghost" type="button" aria-label="分享">${icon("share", 18)}</button>
@@ -765,10 +765,19 @@
                     <div class="workbench-head">
                       <h2>知识星团 (Knowledge Nebula)</h2>
                       <span>${activeWorkspace().length} BLOCKS</span>
+                      <label class="canvas-meta-select">
+                        ${icon("user", 12)}
+                        <select id="canvasDirectionSelect">
+                          <option value="R" ${activeCanvasMeta().direction === "R" ? "selected" : ""}>R-理工</option>
+                          <option value="Z" ${activeCanvasMeta().direction === "Z" ? "selected" : ""}>Z-人文</option>
+                        </select>
+                      </label>
                     </div>
 
                     ${renderRelationCanvas()}
                     ${activeWorkspace().length ? renderRelationSummary() : ""}
+                    ${renderCheckinCalendar()}
+                    ${renderProfilePanel()}
                     ${activeWorkspace().length ? renderGeneratedNote() : ""}
                   </section>
                 </div>
@@ -787,6 +796,7 @@
     bindEvents();
     restoreScrollState(scrollState);
     window.requestAnimationFrame(() => restoreScrollState(scrollState));
+    persistState();
   }
 
   function renderSidebar() {
@@ -807,7 +817,7 @@
           <div class="notebook-section">
             <div class="notebook-title">
               <span>笔记夹 (Notebooks)</span>
-              <button type="button" aria-label="新建笔记夹">${icon("plus", 14)}</button>
+              <button type="button" data-new-folder aria-label="新建笔记夹">${icon("plus", 14)}</button>
             </div>
 
             ${state.folders.map(renderFolder).join("")}
@@ -836,13 +846,24 @@
   }
 
   function renderFolder(folder) {
+    const folderMeta = ensureCanvasMeta(folder.id);
     return `
       <div class="folder">
-        <button class="folder-row" type="button" data-folder="${folder.id}">
-          <span class="folder-caret ${folder.isOpen ? "is-open" : ""}">${icon("chevronRight", 14)}</span>
-          ${folder.isOpen ? icon("folderOpen", 16) : icon("folder", 16)}
-          <span>${escapeHtml(folder.name)}</span>
-        </button>
+        <div class="folder-row-wrap">
+          <button class="folder-row" type="button" data-folder="${folder.id}">
+            <span class="folder-caret ${folder.isOpen ? "is-open" : ""}">${icon("chevronRight", 14)}</span>
+            <span class="page-dot" style="--dot-color:${folderMeta.labelColor}"></span>
+            ${folder.isOpen ? icon("folderOpen", 16) : icon("folder", 16)}
+            <span>${escapeHtml(folder.name)}</span>
+          </button>
+          <div class="folder-tools">
+            <select data-folder-color="${folder.id}" aria-label="修改笔记夹标签色">
+              ${CANVAS_COLORS.map((color) => `<option value="${color}" ${folderMeta.labelColor === color ? "selected" : ""}>${color}</option>`).join("")}
+            </select>
+            <button type="button" data-rename-folder="${folder.id}" aria-label="重命名笔记夹">${icon("edit", 12)}</button>
+            <button type="button" data-delete-folder="${folder.id}" aria-label="删除笔记夹">${icon("trash", 12)}</button>
+          </div>
+        </div>
 
         ${
           folder.isOpen
@@ -862,13 +883,19 @@
 
   function renderPage(page) {
     const isActive = page.id === state.activePageId;
-    const blockCount = (state.workspacesByPage[page.id] || []).length;
+    const blockCount = state.coreBrickByPage[page.id] ? 1 : 0;
     return `
-      <button class="page-row ${isActive ? "is-active" : ""}" type="button" data-page="${page.id}" data-page-drop="${page.id}" title="${isActive ? "当前页面" : "可将积木拖到此页面"}">
-        ${icon("fileText", 14)}
-        <span>${escapeHtml(page.title)}</span>
-        ${blockCount ? `<small>${blockCount}</small>` : ""}
-      </button>
+      <div class="page-row-wrap ${isActive ? "is-active" : ""}">
+        <button class="page-row ${isActive ? "is-active" : ""}" type="button" data-page="${page.id}" data-page-drop="${page.id}" title="${isActive ? "当前页面" : "可将积木拖到此页面"}">
+          ${icon("fileText", 14)}
+          <span>${escapeHtml(page.title)}</span>
+          ${blockCount ? `<small>${blockCount}</small>` : ""}
+        </button>
+        <div class="page-tools">
+          <button type="button" data-rename-page="${page.id}" aria-label="重命名笔记">${icon("edit", 11)}</button>
+          <button type="button" data-delete-page="${page.id}" aria-label="删除笔记">${icon("trash", 11)}</button>
+        </div>
+      </div>
     `;
   }
 
@@ -1052,21 +1079,100 @@
   }
 
   function renderRelationSummary() {
-    const { relations } = computeRelations();
-    const lines = relations.length
-      ? relations.slice(0, 6)
-      : ["提示：把积木摆成同行、同列上下相邻、重叠嵌入，或双击设为前提后放到下方，可生成关系。"];
+    const summaryText = activeCanvasMeta().lastAnalysisText || "尚未确认画布。点击顶部“确认画布并生成总结”后，将按固定模板生成关系分析。";
 
     return `
       <div class="relation-summary">
         <div class="relation-summary-head">
-          <strong>关系识别</strong>
-          <span>双击积木设为条件前提，拖动位置会实时重算</span>
+          <strong>关系分析（固定模板）</strong>
+          <span>关系类型仅：从属 / 并列 / 递进 / 条件（双击可设前提）</span>
         </div>
         <div class="relation-list">
-          ${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")}
+          <pre>${escapeHtml(summaryText)}</pre>
         </div>
       </div>
+    `;
+  }
+
+  function renderCheckinCalendar() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const monthDays = new Date(year, month + 1, 0).getDate();
+    const leading = (firstDay.getDay() + 6) % 7;
+    const cells = [];
+
+    for (let index = 0; index < leading; index += 1) cells.push('<div class="calendar-cell empty"></div>');
+    for (let day = 1; day <= monthDays; day += 1) {
+      const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const entries = (state.checkinsByDate[key] || [])
+        .map((entry) => {
+          const legacyFolder = entry.folderId || ((entry.pageId && folderByPageId(entry.pageId)) ? folderByPageId(entry.pageId).id : "");
+          return { ...entry, folderId: String(legacyFolder || "") };
+        })
+        .filter((entry) => entry.folderId && state.folders.some((folder) => folder.id === entry.folderId))
+        .filter((entry, index, list) => list.findIndex((item) => item.folderId === entry.folderId) === index);
+      const dots = entries
+        .map((entry) => {
+          const color = ensureCanvasMeta(entry.folderId).labelColor || entry.labelColor || "#94a3b8";
+          return `<span style="background:${color}"></span>`;
+        })
+        .join("");
+      cells.push(`<div class="calendar-cell ${entries.length ? "checked" : ""}"><strong>${day}</strong><div class="calendar-dots">${dots}</div></div>`);
+    }
+
+    return `
+      <section class="checkin-panel">
+        <h3>${icon("calendar", 14)} 打卡表</h3>
+        <div class="calendar-grid">${cells.join("")}</div>
+      </section>
+    `;
+  }
+
+  function computeProfile() {
+    const folderIds = state.folders.map((folder) => folder.id);
+    const stats = folderIds.map((folderId) => {
+      const meta = ensureCanvasMeta(folderId);
+      const bricks = (state.workspacesByPage[folderId] || []).length;
+      return { direction: meta.direction, bricks, weight: Math.max(1, bricks) };
+    });
+
+    const directionWeight = stats.reduce((acc, item) => {
+      acc[item.direction] = (acc[item.direction] || 0) + item.weight;
+      return acc;
+    }, { R: 0, Z: 0 });
+    const directionCode = directionWeight.Z > directionWeight.R ? "Z" : "R";
+    const directionText = directionCode === "Z" ? "人文科学" : "理工科学";
+
+    const today = new Date();
+    const checkDays = Object.keys(state.checkinsByDate).filter((key) => {
+      const time = new Date(`${key}T00:00:00`).getTime();
+      return Number.isFinite(time) && (today.getTime() - time) <= 30 * 24 * 3600 * 1000;
+    }).length;
+    const habitCode = checkDays >= 15 ? "X" : "D";
+    const habitText = habitCode === "X" ? "十分辛勤" : "略显懈怠";
+
+    const canvasCount = Math.max(1, folderIds.length);
+    const brickTotal = stats.reduce((acc, item) => acc + item.bricks, 0);
+    const depthCode = (brickTotal / canvasCount) > 10 ? "Z" : "G";
+    const depthText = depthCode === "Z" ? "专精" : "广博";
+
+    const code = `${depthCode}${habitCode}${directionCode}`;
+    const description = `${depthText}的${habitText}的${directionText}的思考者`;
+    const prompt = encodeURIComponent(`clean comic portrait, half body, learner with notebooks and colorful knowledge blocks, chinese style modern flat illustration, high contrast, white background, caption ${code}`);
+    const image = `https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=${prompt}&image_size=square_hd`;
+    return { code, description, image };
+  }
+
+  function renderProfilePanel() {
+    const profile = computeProfile();
+    return `
+      <section class="profile-panel">
+        <h3>${icon("user", 14)} 用户画像</h3>
+        <p><strong>${profile.code}</strong>：${escapeHtml(profile.description)}</p>
+        <img src="${profile.image}" alt="用户画像人物漫画图">
+      </section>
     `;
   }
 
@@ -1618,6 +1724,90 @@
       });
     });
 
+    document.querySelectorAll("[data-new-folder]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const name = window.prompt("请输入新笔记夹名称", "新建笔记夹");
+        if (!name || !name.trim()) return;
+        const newFolderId = `f-${Date.now()}`;
+        const newPageId = `p-${Date.now()}`;
+        state.folders = [
+          {
+            id: newFolderId,
+            name: name.trim(),
+            isOpen: true,
+            pages: [{ id: newPageId, title: "未命名笔记" }]
+          },
+          ...state.folders
+        ];
+        state.notesByPage[newPageId] = "";
+        state.coreBrickByPage[newPageId] = null;
+        state.activePageId = newPageId;
+        ensureCanvasMeta(newFolderId);
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-rename-folder]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const folderId = button.dataset.renameFolder;
+        const folder = state.folders.find((item) => item.id === folderId);
+        if (!folder) return;
+        const name = window.prompt("重命名笔记夹", folder.name);
+        if (!name || !name.trim()) return;
+        state.folders = state.folders.map((item) => item.id === folderId ? { ...item, name: name.trim() } : item);
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-delete-folder]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const folderId = button.dataset.deleteFolder;
+        const folder = state.folders.find((item) => item.id === folderId);
+        if (!folder) return;
+        if (!window.confirm(`确认删除笔记夹「${folder.name}」及其笔记吗？`)) return;
+        const pageIds = folder.pages.map((page) => page.id);
+        pageIds.forEach((pageId) => {
+          delete state.notesByPage[pageId];
+          delete state.coreBrickByPage[pageId];
+        });
+        delete state.workspacesByPage[folderId];
+        delete state.canvasMetaByPage[folderId];
+        Object.keys(state.checkinsByDate).forEach((dateKey) => {
+          state.checkinsByDate[dateKey] = (state.checkinsByDate[dateKey] || []).filter((entry) => entry.folderId !== folderId);
+        });
+        state.folders = state.folders.filter((item) => item.id !== folderId);
+        if (!state.folders.length) {
+          const fallbackFolderId = "f-default";
+          const fallbackPageId = "p-default";
+          state.folders = [{ id: fallbackFolderId, name: "默认笔记夹", isOpen: true, pages: [{ id: fallbackPageId, title: "未命名笔记" }] }];
+          state.notesByPage[fallbackPageId] = "";
+          state.coreBrickByPage[fallbackPageId] = null;
+          ensureCanvasMeta(fallbackFolderId);
+          state.activePageId = fallbackPageId;
+        } else if (pageIds.includes(state.activePageId)) {
+          state.activePageId = state.folders[0].pages[0].id;
+        }
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-folder-color]").forEach((select) => {
+      select.addEventListener("click", (event) => event.stopPropagation());
+      select.addEventListener("change", () => {
+        const folderId = select.dataset.folderColor;
+        const nextColor = select.value;
+        ensureCanvasMeta(folderId).labelColor = nextColor;
+        Object.keys(state.checkinsByDate).forEach((dateKey) => {
+          state.checkinsByDate[dateKey] = (state.checkinsByDate[dateKey] || []).map((entry) =>
+            String(entry.folderId) === String(folderId) ? { ...entry, labelColor: nextColor } : entry
+          );
+        });
+        render();
+      });
+    });
+
     document.querySelectorAll("[data-page]").forEach((button) => {
       button.addEventListener("click", () => {
         state.activePageId = button.dataset.page;
@@ -1651,6 +1841,43 @@
       });
     });
 
+    document.querySelectorAll("[data-rename-page]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const pageId = button.dataset.renamePage;
+        const page = state.folders.flatMap((folder) => folder.pages).find((item) => item.id === pageId);
+        if (!page) return;
+        const title = window.prompt("重命名笔记", page.title);
+        if (!title || !title.trim()) return;
+        state.folders = state.folders.map((folder) => ({
+          ...folder,
+          pages: folder.pages.map((item) => item.id === pageId ? { ...item, title: title.trim() } : item)
+        }));
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-delete-page]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const pageId = button.dataset.deletePage;
+        const holder = state.folders.find((folder) => folder.pages.some((item) => item.id === pageId));
+        if (!holder) return;
+        if (!window.confirm("确认删除这个笔记吗？")) return;
+        if (holder.pages.length <= 1) {
+          window.alert("每个笔记夹至少保留一个笔记。");
+          return;
+        }
+        holder.pages = holder.pages.filter((item) => item.id !== pageId);
+        delete state.notesByPage[pageId];
+        delete state.coreBrickByPage[pageId];
+        if (state.activePageId === pageId) {
+          state.activePageId = holder.pages[0].id;
+        }
+        render();
+      });
+    });
+
     document.querySelectorAll("[data-new-page]").forEach((button) => {
       button.addEventListener("click", () => {
         const page = { id: String(Date.now()), title: "未命名笔记" };
@@ -1659,7 +1886,7 @@
         );
         state.activePageId = page.id;
         state.notesByPage[page.id] = "";
-        state.workspacesByPage[page.id] = [];
+        state.coreBrickByPage[page.id] = null;
         state.generatedNote = null;
         state.prerequisiteSegmentId = "";
         render();
@@ -1668,6 +1895,23 @@
 
     document.querySelectorAll("[data-seek]").forEach((button) => {
       button.addEventListener("click", () => jumpTo(Number(button.dataset.seek)));
+    });
+
+    document.querySelectorAll("[data-jump-time]").forEach((button) => {
+      button.addEventListener("click", () => jumpTo(Number(button.dataset.jumpTime)));
+    });
+
+    document.querySelectorAll("[data-rename]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const instanceId = Number(button.dataset.rename);
+        const target = activeWorkspace().find((item) => item.instanceId === instanceId);
+        if (!target) return;
+        const nextName = window.prompt("重命名积木", target.title);
+        if (!nextName || !nextName.trim()) return;
+        setActiveWorkspace(activeWorkspace().map((item) => item.instanceId === instanceId ? { ...item, title: nextName.trim() } : item));
+        state.generatedNote = null;
+        render();
+      });
     });
 
     document.querySelectorAll("[data-delete]").forEach((button) => {
@@ -1718,6 +1962,14 @@
       const dropY = event.clientY - rect.top;
       handleCanvasDrop(event, dropX, dropY);
     });
+
+    const directionSelect = document.getElementById("canvasDirectionSelect");
+    if (directionSelect) {
+      directionSelect.addEventListener("change", () => {
+        activeCanvasMeta().direction = directionSelect.value;
+        render();
+      });
+    }
 
     bindWorkspaceDrag();
   }
