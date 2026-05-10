@@ -36,6 +36,22 @@
   const SIDEBAR_MIN_WIDTH = 216;
   const SIDEBAR_MAX_WIDTH = 420;
   const MAX_ANALYSIS_UPLOAD_BYTES = 25 * 1024 * 1024;
+  const TYPE_LABELS = {
+    intro: "开场",
+    scene: "场景",
+    process: "过程",
+    key_point: "重点",
+    product: "产品",
+    conflict: "冲突",
+    conversion: "转化",
+    outro: "收束"
+  };
+  const SHOT_THEME_META = {
+    talking: { label: "谈话", color: "#2563eb", axis: { x: 100, y: 18 } },
+    closeup: { label: "特写", color: "#f97316", axis: { x: 28, y: 138 } },
+    broll: { label: "空镜头", color: "#16a34a", axis: { x: 172, y: 138 } }
+  };
+  const SHOT_THEME_ORDER = ["talking", "closeup", "broll"];
 
   const state = {
     analysis: clone(window.MOCK_ANALYSIS.bricknote),
@@ -228,6 +244,58 @@
     }));
   }
 
+  function normalizeShotTheme(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (["talking", "talk", "dialogue", "dialog", "interview", "speech", "口播", "对话", "谈话", "采访"].includes(normalized)) {
+      return "talking";
+    }
+    if (["closeup", "close_up", "close-up", "detail", "macro", "特写", "细节", "近景"].includes(normalized)) {
+      return "closeup";
+    }
+    if (["broll", "b-roll", "empty", "establishing", "cutaway", "空镜", "空镜头", "环境", "转场"].includes(normalized)) {
+      return "broll";
+    }
+    return "";
+  }
+
+  function inferShotTheme(segment) {
+    const explicitTheme = normalizeShotTheme(
+      segment.shotType || segment.shotTheme || segment.shotCategory || segment.visualType
+    );
+    if (explicitTheme) return explicitTheme;
+
+    const text = [
+      segment.type,
+      segment.title,
+      segment.summary,
+      ...(Array.isArray(segment.keywords) ? segment.keywords : [])
+    ].join(" ").toLowerCase();
+
+    if (/特写|细节|质感|产品|菜品|手部|asmr|close|macro|detail/.test(text)) return "closeup";
+    if (/场景|环境|空镜|布景|街景|夜景|城市|转场|氛围|broll|b-roll|establishing/.test(text)) return "broll";
+    return "talking";
+  }
+
+  function computeShotThemeAnalytics() {
+    const totals = SHOT_THEME_ORDER.reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+    const segments = Array.isArray(state.analysis.segments) ? state.analysis.segments : [];
+    segments.forEach((segment) => {
+      const duration = Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
+      totals[inferShotTheme(segment)] += duration;
+    });
+
+    const totalDuration = SHOT_THEME_ORDER.reduce((sum, key) => sum + totals[key], 0) || state.duration || 1;
+    const items = SHOT_THEME_ORDER.map((key) => ({
+      key,
+      ...SHOT_THEME_META[key],
+      seconds: totals[key],
+      percent: Math.round((totals[key] / totalDuration) * 100)
+    }));
+    const dominant = items.reduce((max, item) => (item.percent > max.percent ? item : max), items[0]);
+
+    return { items, dominant };
+  }
+
   function captureScrollState() {
     const main = document.querySelector(".main");
     const sidebar = document.querySelector(".sidebar-scroll");
@@ -327,6 +395,7 @@
                 <div class="builder-layout">
                   <section class="library-card">
                     <h2 class="eyebrow">${icon("hash", 12)} 知识积木库</h2>
+                    ${renderThemeAnalytics()}
                     <div class="brick-library">
                       ${libraryItems().map(renderLibraryBrick).join("")}
                     </div>
@@ -454,8 +523,79 @@
         title="${segment.isUsed ? "已加入积木墙" : "拖动或点击加入积木墙"}"
       >
         <span>${formatTime(segment.start)}</span>
+        <em>${escapeHtml(TYPE_LABELS[segment.type] || segment.type || "片段")}</em>
         <strong>${escapeHtml(segment.title)}</strong>
       </button>
+    `;
+  }
+
+  function renderThemeAnalytics() {
+    const { items, dominant } = computeShotThemeAnalytics();
+    const pointString = items
+      .map((item) => {
+        const axis = SHOT_THEME_META[item.key].axis;
+        const ratio = Math.max(0.08, item.percent / 100);
+        const x = 100 + (axis.x - 100) * ratio;
+        const y = 100 + (axis.y - 100) * ratio;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+
+    return `
+      <section class="theme-radar" aria-label="积木色彩雷达">
+        <div class="theme-radar-head">
+          <div>
+            <strong>积木色彩雷达</strong>
+            <span>Theme Analytics</span>
+          </div>
+          <em>${escapeHtml(dominant.label)} ${dominant.percent}%</em>
+        </div>
+
+        <div class="theme-radar-visual">
+          <svg class="radar-chart" viewBox="0 0 200 160" role="img" aria-label="谈话、特写、空镜头占比雷达图">
+            <polygon class="radar-grid outer" points="100,18 28,138 172,138"></polygon>
+            <polygon class="radar-grid middle" points="100,59 64,119 136,119"></polygon>
+            <polygon class="radar-grid inner" points="100,79 82,110 118,110"></polygon>
+            <line x1="100" y1="100" x2="100" y2="18"></line>
+            <line x1="100" y1="100" x2="28" y2="138"></line>
+            <line x1="100" y1="100" x2="172" y2="138"></line>
+            <polygon class="radar-area" points="${pointString}"></polygon>
+            ${items
+              .map((item) => {
+                const axis = SHOT_THEME_META[item.key].axis;
+                return `<circle class="radar-dot" style="--dot-color:${item.color}" cx="${axis.x}" cy="${axis.y}" r="4"></circle>`;
+              })
+              .join("")}
+          </svg>
+
+          <div class="theme-stack" aria-hidden="true">
+            ${items
+              .map(
+                (item) => `
+                  <span
+                    style="--theme-color:${item.color}; --theme-percent:${item.percent}%"
+                    title="${escapeHtml(item.label)} ${item.percent}%"
+                  ></span>
+                `
+              )
+              .join("")}
+          </div>
+        </div>
+
+        <div class="theme-metrics">
+          ${items
+            .map(
+              (item) => `
+                <div class="theme-metric">
+                  <span style="--theme-color:${item.color}"></span>
+                  <strong>${item.percent}%</strong>
+                  <em>${escapeHtml(item.label)}</em>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </section>
     `;
   }
 
@@ -530,6 +670,7 @@
               <button type="button" data-seek="${brick.start}">
                 ${icon("clock", 10)} ${formatTime(brick.start)}
               </button>
+              <em>${escapeHtml(TYPE_LABELS[brick.type] || brick.type || "片段")}</em>
               <h3>${escapeHtml(brick.title)}</h3>
             </div>
             <p>${escapeHtml(brick.summary)}</p>
@@ -1480,6 +1621,8 @@
       end,
       title: segment.title || `片段 ${index + 1}`,
       type: segment.type || `topic-${index + 1}`,
+      shotType: normalizeShotTheme(segment.shotType || segment.shotTheme || segment.shotCategory || segment.visualType)
+        || inferShotTheme(segment),
       color: segment.color || ["#e2e8f0", "#fca5a5", "#93c5fd", "#d8b4fe", "#86efac", "#fde68a"][index % 6],
       intensity: Math.min(0.95, Math.max(0.45, Number(segment.intensity || 0.62))),
       summary: segment.summary || "暂无概括",
@@ -1496,6 +1639,10 @@
 
     return {
       ...baseAnalysis,
+      videoSrc: payload.videoSrc || baseAnalysis.videoSrc,
+      sourceType: payload.sourceType || baseAnalysis.sourceType,
+      sourceLabel: payload.sourceLabel || baseAnalysis.sourceLabel,
+      videoTitle: payload.videoTitle || baseAnalysis.videoTitle,
       duration,
       segments: segments.length ? segments : baseAnalysis.segments,
       coreIdea: payload.summary || baseAnalysis.coreIdea,
@@ -1532,6 +1679,24 @@
     const duration = await readVideoDurationFromSrc(objectUrl);
     const videoDataUrl = await fileToDataUrl(file);
     return analyzeVideoDataUrlThroughBackend(file.name, videoDataUrl, duration, baseAnalysis);
+  }
+
+  async function uploadLocalVideoThroughBackend(file, baseAnalysis) {
+    const response = await fetch("/api/upload-video", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name)
+      },
+      body: file
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(payload.error || "后端上传分析失败。");
+    }
+
+    return buildAnalysisFromBackend(payload, baseAnalysis, { duration: payload.duration });
   }
 
   async function analyzeVideoSrcThroughBackend(videoSrc, fileName) {
@@ -1624,23 +1789,39 @@
 
     state.localObjectUrl = URL.createObjectURL(file);
     const analysis = clone(window.MOCK_ANALYSIS.local);
+    const localDuration = await readVideoDurationFromSrc(state.localObjectUrl);
     analysis.videoSrc = state.localObjectUrl;
     analysis.sourceLabel = file.name;
     analysis.videoTitle = file.name.replace(/\.[^.]+$/, "") || "本地视频积木笔记";
-    loadAnalysis(analysis, { status: "本地视频已载入，正在请求后端分析内容。" });
+    analysis.duration = Math.max(1, Math.round(localDuration));
+    analysis.segments = [
+      {
+        id: "pending-analysis",
+        start: 0,
+        end: analysis.duration,
+        title: "等待后端分析",
+        type: "process",
+        shotType: "talking",
+        color: "#86efac",
+        intensity: 0.5,
+        summary: "视频已进入后端分析队列，完成后会替换为真实时间戳积木。",
+        keywords: ["分析中", "后端", "时间戳"]
+      }
+    ];
+    loadAnalysis(analysis, { status: "本地视频已载入，正在上传到后端分析内容。" });
 
     try {
       state.isImporting = true;
-      const analyzed = await analyzeFileThroughBackend(file, state.localObjectUrl, analysis);
+      const analyzed = await uploadLocalVideoThroughBackend(file, analysis);
       loadAnalysis({ ...analysis, ...analyzed }, {
         status:
           analyzed.backendSource === "endpoint"
-            ? "后端视频分析完成，积木片段已更新。"
+            ? "后端视频分析完成，已按真实时间戳生成积木。"
             : "未配置 QWEN_API_KEY，已使用后端 mock 分析结果。"
       });
     } catch (error) {
       state.isImporting = false;
-      state.importStatus = `本地视频已载入，但后端分析未完成：${error.message} 已保留演示积木。`;
+      state.importStatus = `本地视频已载入，但后端分析未完成：${error.message} 已保留本地播放。`;
       syncStatusOnly();
     }
   }
