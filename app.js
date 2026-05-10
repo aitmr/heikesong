@@ -18,6 +18,9 @@
     chevronRight: "M9 18l6-6-6-6",
     chevronDown: "M6 9l6 6 6-6",
     wand: "M15 4l5 5M14.5 9.5L4 20l-1-1L13.5 8.5M17 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3zM5 3l.7 1.6L7 5l-1.3.4L5 7l-.7-1.6L3 5l1.3-.4L5 3z",
+    map: "M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3zM9 3v15M15 6v15",
+    network: "M12 5a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 21a3 3 0 100-6 3 3 0 000 6zM10.6 6.8L7.4 14.2M13.4 6.8l3.2 7.4",
+    gitBranch: "M6 3v12M6 15a3 3 0 100 6 3 3 0 000-6zM18 3a3 3 0 100 6 3 3 0 000-6zM18 9a9 9 0 01-9 9",
     folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z",
     folderOpen: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v2M3 11h18l-2 8H5z",
     settings: "M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM19.4 15a1.8 1.8 0 00.36 1.98l.04.05-2 3.46-.06-.02a1.8 1.8 0 00-2.02.28 1.8 1.8 0 00-.58 1.25V22h-4v-.08a1.8 1.8 0 00-2.6-1.53l-.06.03-2-3.46.05-.04A1.8 1.8 0 005 15a1.8 1.8 0 00-1.44-1.77L3.5 13.2v-4l.06-.02A1.8 1.8 0 005 7a1.8 1.8 0 00-.36-1.98L4.6 4.97l2-3.46.06.02a1.8 1.8 0 002.02-.28A1.8 1.8 0 009.26 0h4v.08a1.8 1.8 0 002.6 1.53l.06-.03 2 3.46-.05.04A1.8 1.8 0 0019 7a1.8 1.8 0 001.44 1.77l.06.02v4l-.06.02A1.8 1.8 0 0019.4 15z",
@@ -46,6 +49,12 @@
     conversion: "转化",
     outro: "收束"
   };
+  const SUMMARY_MODES = {
+    mind_map: { label: "思维导图", shortLabel: "Mind Map", icon: "network" },
+    temporal_map: { label: "时空地图", shortLabel: "Temporal Map", icon: "map" },
+    flowchart: { label: "逻辑流程图", shortLabel: "Flowchart", icon: "gitBranch" }
+  };
+  const SUMMARY_MODE_ORDER = ["mind_map", "temporal_map", "flowchart"];
   const SHOT_THEME_META = {
     talking: { label: "谈话", color: "#2563eb", axis: { x: 100, y: 18 } },
     closeup: { label: "特写", color: "#f97316", axis: { x: 28, y: 138 } },
@@ -103,6 +112,7 @@
       ]
     },
     generatedNote: null,
+    summaryViewMode: "",
     isGenerating: false,
     isImporting: false,
     dragging: null,
@@ -195,17 +205,254 @@
     );
   }
 
+  function generatedNoteMarkdown(note, mode) {
+    const normalized = normalizeGeneratedNote(note);
+    if (!normalized) return "";
+    const selectedMode = normalizeSummaryMode(mode || normalized.mode);
+    const modeMeta = SUMMARY_MODES[selectedMode];
+    const lines = [
+      `# ${normalized.title}`,
+      "",
+      `推荐视图：${modeMeta.label}`,
+      `推荐理由：${normalized.modeReason}`,
+      "",
+      `核心观点：${normalized.core}`,
+      ""
+    ];
+
+    if (selectedMode === "mind_map") {
+      const view = normalized.views.mind_map;
+      lines.push(`## ${view.center || "思维导图"}`);
+      (view.branches || []).forEach((branch) => {
+        lines.push(`- ${branch.title}`);
+        (branch.children || []).forEach((child) => lines.push(`  - ${child}`));
+      });
+    } else if (selectedMode === "temporal_map") {
+      const view = normalized.views.temporal_map;
+      lines.push(`## ${view.routeTitle || "时空地图"}`);
+      (view.stations || []).forEach((station, index) => {
+        lines.push(`${index + 1}. ${station.time || ""} ${station.label || station.place || "站点"}`);
+        lines.push(`   - 地点/地标：${station.place || "未标注"}`);
+        lines.push(`   - 美食/记忆点：${station.food || "未标注"}`);
+        lines.push(`   - 摘要：${station.description || ""}`);
+      });
+    } else {
+      const view = normalized.views.flowchart;
+      lines.push("## 逻辑流程图");
+      (view.nodes || []).forEach((node) => {
+        lines.push(`- [${node.type || "step"}] ${node.label}: ${node.description || ""}`);
+      });
+      if ((view.edges || []).length) {
+        lines.push("");
+        lines.push("### 分支");
+        view.edges.forEach((edge) => lines.push(`- ${edge.from} --${edge.label || "继续"}--> ${edge.to}`));
+      }
+    }
+
+    lines.push("");
+    lines.push("## 行动建议");
+    lines.push(normalized.action);
+    return lines.join("\n");
+  }
+
   function generatedNoteText(note) {
-    if (!note) return "";
+    return generatedNoteMarkdown(note, state.summaryViewMode || (note && note.mode));
+  }
+
+  function normalizeSummaryMode(value) {
+    return SUMMARY_MODES[value] ? value : "mind_map";
+  }
+
+  function compactText(value, fallback, maxLength) {
+    const text = String(value || fallback || "").trim();
+    const limit = maxLength || 36;
+    return text.length > limit ? `${text.slice(0, limit)}...` : text;
+  }
+
+  function segmentSearchText(segment) {
     return [
-      note.title,
-      "",
-      `核心观点：${note.core}`,
-      "",
-      ...note.steps.map((step, index) => `${index + 1}. ${step}`),
-      "",
-      `行动建议：${note.action}`
-    ].join("\n");
+      segment && segment.type,
+      segment && segment.title,
+      segment && segment.summary,
+      ...((segment && Array.isArray(segment.keywords)) ? segment.keywords : [])
+    ].join(" ").toLowerCase();
+  }
+
+  function inferSummaryMode(analysis, segments) {
+    const text = [
+      analysis && analysis.videoTitle,
+      analysis && analysis.noteTitle,
+      analysis && analysis.coreIdea,
+      ...(Array.isArray(segments) ? segments.map(segmentSearchText) : [])
+    ].join(" ").toLowerCase();
+
+    if (/教学|教程|步骤|方法|流程|判断|选择|决策|操作|怎么|如何|lesson|tutorial|how to|guide/.test(text)) {
+      return "flowchart";
+    }
+    if (/美食|探店|餐厅|小吃|菜品|吃|旅行|旅游|地标|景点|城市|街区|路线|打卡|food|travel|restaurant|landmark/.test(text)) {
+      return "temporal_map";
+    }
+    return "mind_map";
+  }
+
+  function summaryModeReason(mode) {
+    if (mode === "flowchart") return "内容包含步骤、教学或判断路径，适合用流程图呈现。";
+    if (mode === "temporal_map") return "内容围绕地点、美食或旅行路径展开，适合用时空地图呈现。";
+    return "内容更偏观点归纳和结构拆解，适合用思维导图呈现。";
+  }
+
+  function buildMindMapView(fileName, segments) {
+    const items = (Array.isArray(segments) ? segments : []).slice(0, 6);
+    return {
+      center: compactText(fileName, "视频结构拆解", 18),
+      branches: items.length
+        ? items.map((segment) => ({
+            title: compactText(segment.title, "关键片段", 18),
+            children: [
+              compactText(segment.summary, "提炼该片段的核心信息。", 36),
+              ...((Array.isArray(segment.keywords) ? segment.keywords : []).slice(0, 2).map((keyword) => `#${keyword}`))
+            ].filter(Boolean)
+          }))
+        : [
+            { title: "核心观点", children: ["整理视频主线", "提炼可复用结论"] },
+            { title: "内容结构", children: ["按片段顺序展开", "保留关键关系"] }
+          ]
+    };
+  }
+
+  function buildTemporalMapView(fileName, segments) {
+    const items = (Array.isArray(segments) ? segments : []).slice(0, 6);
+    return {
+      routeTitle: compactText(fileName, "视频路线", 18),
+      stations: items.length
+        ? items.map((segment, index) => ({
+            time: segment.timeLabel || formatTime(segment.start || 0),
+            label: compactText(segment.title, `站点 ${index + 1}`, 16),
+            place: compactText((Array.isArray(segment.keywords) && segment.keywords[0]) || segment.title, "地点", 12),
+            food: compactText((Array.isArray(segment.keywords) && segment.keywords[1]) || "体验", "体验", 12),
+            description: compactText(segment.summary, "记录这一站的场景和内容重点。", 42)
+          }))
+        : [
+            { time: "00:00", label: "起点", place: "入口", food: "体验", description: "从视频开头建立路线和主题。" },
+            { time: "继续", label: "重点站", place: "场景", food: "记忆点", description: "用地点、美食或地标串联内容。" }
+          ]
+    };
+  }
+
+  function buildFlowchartView(segments) {
+    const items = (Array.isArray(segments) ? segments : []).slice(0, 5);
+    const nodes = [{ id: "start", type: "start", label: "开始", description: "进入视频主题" }];
+    const edges = [];
+
+    items.forEach((segment, index) => {
+      const id = `node-${index + 1}`;
+      const isDecision = index === 1 || /判断|是否|选择|条件|如果|能否|要不要/.test(segmentSearchText(segment));
+      nodes.push({
+        id,
+        type: isDecision ? "decision" : "step",
+        label: compactText(segment.title, `步骤 ${index + 1}`, 18),
+        description: compactText(segment.summary, "执行这一关键步骤。", 42)
+      });
+      edges.push({
+        from: index === 0 ? "start" : `node-${index}`,
+        to: id,
+        label: index === 0 ? "开始" : (isDecision ? "是" : "继续")
+      });
+    });
+
+    nodes.push({ id: "result", type: "result", label: "形成总结", description: "得到可复用的视频笔记结构。" });
+    edges.push({ from: items.length ? `node-${items.length}` : "start", to: "result", label: "然后" });
+    if (items.length >= 2) edges.push({ from: "node-2", to: "result", label: "否" });
+    return { nodes, edges };
+  }
+
+  function buildFallbackStructuredNote(mode) {
+    const segments = getSpatialWorkspace();
+    const selectedMode = normalizeSummaryMode(mode || inferSummaryMode(state.analysis, segments));
+    const firstTitles = segments.map((item) => item.title).slice(0, 3).join("、") || "关键片段";
+    return {
+      title: "视频结构拆解",
+      core: state.analysisSummary || `${state.analysis.videoTitle || "当前视频"} 的内容可以按“${firstTitles}”这条链路理解。`,
+      steps: segments.slice(0, 6).map((brick) => brick.summary || brick.title || "整理一个关键片段。"),
+      action: computeRelations().relations[0] || "继续调整积木位置，明确并列、递进、从属或条件关系。",
+      mode: selectedMode,
+      modeReason: summaryModeReason(selectedMode),
+      views: {
+        mind_map: buildMindMapView(state.analysis.videoTitle, segments),
+        temporal_map: buildTemporalMapView(state.analysis.videoTitle, segments),
+        flowchart: buildFlowchartView(segments)
+      }
+    };
+  }
+
+  function normalizeGeneratedNote(rawNote) {
+    if (!rawNote) return null;
+    const fallback = buildFallbackStructuredNote(rawNote.mode);
+    const note = typeof rawNote === "object" ? rawNote : {};
+    const views = note.views && typeof note.views === "object" ? note.views : {};
+    const mode = normalizeSummaryMode(note.mode || fallback.mode);
+
+    return {
+      title: compactText(note.title, fallback.title, 18),
+      core: String(note.core || fallback.core).trim(),
+      steps: Array.isArray(note.steps) && note.steps.length ? note.steps.map((item) => String(item).trim()).filter(Boolean) : fallback.steps,
+      action: String(note.action || fallback.action).trim(),
+      mode,
+      modeReason: String(note.modeReason || summaryModeReason(mode)).trim(),
+      views: {
+        mind_map: normalizeMindMapView(views.mind_map || note.mind_map || fallback.views.mind_map, fallback.views.mind_map),
+        temporal_map: normalizeTemporalMapView(
+          views.temporal_map || note.temporal_map || fallback.views.temporal_map,
+          fallback.views.temporal_map
+        ),
+        flowchart: normalizeFlowchartView(views.flowchart || note.flowchart || fallback.views.flowchart, fallback.views.flowchart)
+      }
+    };
+  }
+
+  function normalizeMindMapView(view, fallback) {
+    const source = view && typeof view === "object" ? view : fallback;
+    return {
+      center: compactText(source.center, fallback.center, 18),
+      branches: (Array.isArray(source.branches) ? source.branches : fallback.branches).slice(0, 6).map((branch) => ({
+        title: compactText(branch.title, "分支", 18),
+        children: (Array.isArray(branch.children) ? branch.children : []).map((item) => compactText(item, "要点", 38)).slice(0, 4)
+      }))
+    };
+  }
+
+  function normalizeTemporalMapView(view, fallback) {
+    const source = view && typeof view === "object" ? view : fallback;
+    return {
+      routeTitle: compactText(source.routeTitle, fallback.routeTitle, 18),
+      stations: (Array.isArray(source.stations) ? source.stations : fallback.stations).slice(0, 6).map((station, index) => ({
+        time: compactText(station.time, formatTime(index * 30), 10),
+        label: compactText(station.label, `站点 ${index + 1}`, 16),
+        place: compactText(station.place, "地点", 12),
+        food: compactText(station.food, "体验", 12),
+        description: compactText(station.description, "记录这一站的内容重点。", 44)
+      }))
+    };
+  }
+
+  function normalizeFlowchartView(view, fallback) {
+    const source = view && typeof view === "object" ? view : fallback;
+    const nodes = (Array.isArray(source.nodes) ? source.nodes : fallback.nodes).slice(0, 8).map((node, index) => ({
+      id: String(node.id || `node-${index}`),
+      type: ["start", "decision", "step", "result"].includes(node.type) ? node.type : "step",
+      label: compactText(node.label, `节点 ${index + 1}`, 18),
+      description: compactText(node.description, "", 44)
+    }));
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const edges = (Array.isArray(source.edges) ? source.edges : fallback.edges)
+      .filter((edge) => nodeIds.has(String(edge.from)) && nodeIds.has(String(edge.to)))
+      .slice(0, 10)
+      .map((edge) => ({
+        from: String(edge.from),
+        to: String(edge.to),
+        label: compactText(edge.label, "继续", 8)
+      }));
+    return { nodes, edges };
   }
 
   function activeSegment() {
@@ -998,6 +1245,9 @@
 
   function renderGeneratedNote() {
     if (!state.generatedNote) return "";
+    const note = normalizeGeneratedNote(state.generatedNote);
+    const selectedMode = normalizeSummaryMode(state.summaryViewMode || note.mode);
+    const modeMeta = SUMMARY_MODES[selectedMode];
 
     return `
       <section class="generated-note" id="generatedNoteSection">
@@ -1005,7 +1255,7 @@
         <div class="note-header">
           <div>
             ${icon("wand", 20)}
-            <h2>${escapeHtml(state.generatedNote.title)}</h2>
+            <h2>${escapeHtml(note.title)}</h2>
           </div>
           <button class="save-note-button" type="button" id="saveNote">
             ${icon("download", 12)}
@@ -1013,25 +1263,116 @@
           </button>
         </div>
 
-        <p class="core-quote">"${escapeHtml(state.generatedNote.core)}"</p>
-
-        <div class="note-steps">
-          ${state.generatedNote.steps
-            .map(
-              (step, index) => `
-                <div>
-                  <span>${index + 1}.</span>
-                  <p>${escapeHtml(step)}</p>
-                </div>
-              `
-            )
-            .join("")}
+        <div class="summary-mode-meta">
+          <span>${icon(modeMeta.icon, 14)} AI 推荐：${escapeHtml(modeMeta.label)}</span>
+          <p>${escapeHtml(note.modeReason)}</p>
         </div>
+
+        <div class="summary-mode-switch" role="group" aria-label="切换总结视图">
+          ${SUMMARY_MODE_ORDER.map((mode) => `
+            <button class="${selectedMode === mode ? "is-active" : ""}" type="button" data-summary-mode="${mode}">
+              ${icon(SUMMARY_MODES[mode].icon, 14)}
+              <span>${escapeHtml(SUMMARY_MODES[mode].label)}</span>
+            </button>
+          `).join("")}
+        </div>
+
+        <p class="core-quote">"${escapeHtml(note.core)}"</p>
+
+        ${renderGeneratedNoteView(note, selectedMode)}
 
         <div class="action-line">
-          <span>行动建议：${escapeHtml(state.generatedNote.action)}</span>
+          <span>行动建议：${escapeHtml(note.action)}</span>
         </div>
       </section>
+    `;
+  }
+
+  function renderGeneratedNoteView(note, mode) {
+    if (mode === "temporal_map") return renderTemporalMap(note.views.temporal_map);
+    if (mode === "flowchart") return renderFlowchart(note.views.flowchart);
+    return renderMindMap(note.views.mind_map);
+  }
+
+  function renderMindMap(view) {
+    const branches = view.branches || [];
+    const branchCount = Math.max(1, branches.length);
+    return `
+      <div class="mind-map-view summary-visual">
+        <svg class="mind-map-lines" viewBox="0 0 640 360" preserveAspectRatio="none" aria-hidden="true">
+          ${branches.map((_, index) => {
+            const left = index % 2 === 0;
+            const row = Math.floor(index / 2);
+            const x2 = left ? 150 : 490;
+            const y2 = branchCount <= 2 ? 180 + (index - 0.5) * 112 : 84 + row * 92;
+            return `<path d="M320 180 C${left ? 250 : 390} 180 ${left ? 230 : 410} ${y2} ${x2} ${y2}"></path>`;
+          }).join("")}
+        </svg>
+        <div class="mind-map-center">${escapeHtml(view.center || "视频结构")}</div>
+        <div class="mind-map-branches">
+          ${branches.map((branch, index) => `
+            <article class="mind-branch ${index % 2 === 0 ? "is-left" : "is-right"}">
+              <strong>${escapeHtml(branch.title)}</strong>
+              <ul>
+                ${(branch.children || []).map((child) => `<li>${escapeHtml(child)}</li>`).join("")}
+              </ul>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTemporalMap(view) {
+    const stations = view.stations || [];
+    return `
+      <div class="temporal-map-view summary-visual">
+        <div class="route-title">${icon("map", 14)} <span>${escapeHtml(view.routeTitle || "视频路线")}</span></div>
+        <svg class="route-line" viewBox="0 0 700 140" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M28 102 C120 18 210 120 306 54 S510 20 672 92"></path>
+        </svg>
+        <div class="route-stations" style="--station-count:${Math.max(1, stations.length)}">
+          ${stations.map((station, index) => `
+            <article class="route-station" style="--station-index:${index}">
+              <span class="station-pin">${index + 1}</span>
+              <em>${escapeHtml(station.time)}</em>
+              <strong>${escapeHtml(station.label)}</strong>
+              <div class="station-tags">
+                <span>${escapeHtml(station.place)}</span>
+                <span>${escapeHtml(station.food)}</span>
+              </div>
+              <p>${escapeHtml(station.description)}</p>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFlowchart(view) {
+    const nodes = view.nodes || [];
+    const edges = view.edges || [];
+    const edgeByTarget = edges.reduce((acc, edge) => {
+      acc[edge.to] = acc[edge.to] || [];
+      acc[edge.to].push(edge.label || "继续");
+      return acc;
+    }, {});
+
+    return `
+      <div class="flowchart-view summary-visual">
+        <div class="flowchart-nodes">
+          ${nodes.map((node, index) => `
+            <article class="flow-node is-${escapeHtml(node.type)}">
+              ${index > 0 ? `<span class="flow-edge-label">${escapeHtml((edgeByTarget[node.id] || ["继续"]).join(" / "))}</span>` : ""}
+              <strong>${escapeHtml(node.label)}</strong>
+              <p>${escapeHtml(node.description)}</p>
+            </article>
+          `).join("")}
+        </div>
+        <div class="flow-edge-list">
+          ${edges.map((edge) => `<span>${escapeHtml(edge.from)} → ${escapeHtml(edge.to)} · ${escapeHtml(edge.label || "继续")}</span>`).join("")}
+        </div>
+      </div>
     `;
   }
 
@@ -1135,6 +1476,13 @@
     });
     localVideo.addEventListener("change", handleLocalVideo);
     if (saveButton) saveButton.addEventListener("click", saveToSidebar);
+    document.querySelectorAll("[data-summary-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.summaryViewMode = normalizeSummaryMode(button.dataset.summaryMode);
+        render();
+        document.getElementById("generatedNoteSection")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
     bindNoteEditor(noteEditor, noteTitleInput);
     bindSidebarResize();
 
@@ -1743,14 +2091,13 @@
         relations: relationResult.relations
       });
 
-      state.generatedNote = result.note || buildFallbackGeneratedNote();
+      state.generatedNote = normalizeGeneratedNote(result.note || buildFallbackStructuredNote());
+      state.summaryViewMode = state.generatedNote.mode;
     } catch (error) {
-      state.generatedNote = {
-        title: "爆款短视频脚本逻辑拆解",
-        core: "本次分析基于你重构的知识链路：通过场景共鸣触发情感，再通过细节展示建立信任。",
-        steps: getSpatialWorkspace().map((brick) => brick.summary),
-        action: `${computeRelations().relations[0] || "当前积木关系尚未明确，可继续调整画布位置形成并列、递进、从属或条件关系。"} 后端总结暂不可用：${error.message}`
-      };
+      const fallback = buildFallbackStructuredNote();
+      fallback.action = `${fallback.action} 后端总结暂不可用：${error.message}`;
+      state.generatedNote = normalizeGeneratedNote(fallback);
+      state.summaryViewMode = state.generatedNote.mode;
     } finally {
       state.isGenerating = false;
       render();
@@ -1759,23 +2106,20 @@
   }
 
   function buildFallbackGeneratedNote() {
-    return {
-      title: "视频结构拆解",
-      core: state.analysisSummary || "把视频片段拆成可重排的内容积木，先整理理解路径，再生成一份可复用总结。",
-      steps: getSpatialWorkspace().map((brick) => brick.summary),
-      action: computeRelations().relations[0] || "继续调整积木位置，明确并列、递进、从属或条件关系。"
-    };
+    return buildFallbackStructuredNote();
   }
 
   function saveToSidebar() {
     if (!state.generatedNote) return;
-    const newPage = { id: String(Date.now()), title: state.generatedNote.title };
+    const note = normalizeGeneratedNote(state.generatedNote);
+    const newPage = { id: String(Date.now()), title: note.title };
     state.folders = state.folders.map((folder, index) =>
       index === 0 ? { ...folder, isOpen: true, pages: [newPage, ...folder.pages] } : folder
     );
     state.activePageId = newPage.id;
-    state.notesByPage[newPage.id] = generatedNoteText(state.generatedNote);
+    state.notesByPage[newPage.id] = generatedNoteMarkdown(note, state.summaryViewMode || note.mode);
     state.workspacesByPage[newPage.id] = [];
+    state.summaryViewMode = "";
     render();
   }
 

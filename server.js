@@ -190,15 +190,22 @@ function buildSegmentPrompt(duration) {
   ].join("\n");
 }
 
-function buildSummaryPrompt() {
+function buildStructuredSummaryPrompt() {
   return [
     "你是一个视频总结助手。",
     "请根据用户挑选并排列的视频片段，输出严格合法 JSON。",
-    "返回 JSON 顶层必须只有四个字段：title、core、steps、action。",
+    "返回 JSON 顶层必须包含：title、core、action、mode、modeReason、steps、views。",
     "title 是 12 字以内的中文标题。",
     "core 是一句核心观点。",
     "steps 是 3 到 6 条中文步骤，每条对应内容链路中的一个关键判断。",
     "action 是一句可执行建议。",
+    "mode 是 AI 推荐的默认总结视图，只能是 mind_map、temporal_map、flowchart 之一。",
+    "modeReason 是一句中文说明，解释为什么推荐该视图。",
+    "判断规则：教学/教程/操作决策优先 flowchart；美食/探店/旅行/城市地标优先 temporal_map；其他内容使用 mind_map。",
+    "views 必须包含 mind_map、temporal_map、flowchart 三个字段，即使某个字段不是推荐模式也要给可展示内容。",
+    "views.mind_map 必须包含 center 和 branches；branches 是数组，每项包含 title 和 children，children 是 1 到 4 条中文短句。",
+    "views.temporal_map 必须包含 routeTitle 和 stations；stations 是按时间顺序排列的数组，每项包含 time、label、place、food、description。",
+    "views.flowchart 必须包含 nodes 和 edges；nodes 每项包含 id、type、label、description，type 只能是 start、decision、step、result；edges 每项包含 from、to、label，label 可使用 是、否、继续、然后。",
     "不要输出 Markdown、解释或多余前后缀。"
   ].join("\n");
 }
@@ -354,17 +361,174 @@ function buildMockAnalysis(fileName, duration) {
   };
 }
 
-function buildFallbackNote(fileName, segments, relations) {
+function segmentText(segment) {
+  return [
+    segment && segment.type,
+    segment && segment.title,
+    segment && segment.summary,
+    ...((segment && Array.isArray(segment.keywords)) ? segment.keywords : [])
+  ].join(" ").toLowerCase();
+}
+
+function inferSummaryMode(fileName, segments) {
+  const text = [fileName, ...(Array.isArray(segments) ? segments.map(segmentText) : [])].join(" ").toLowerCase();
+  if (/教学|教程|步骤|方法|流程|判断|选择|决策|操作|怎么|如何|lesson|tutorial|how to|guide/.test(text)) {
+    return "flowchart";
+  }
+  if (/美食|探店|餐厅|小吃|菜品|吃|旅行|旅游|地标|景点|城市|街区|路线|打卡|food|travel|restaurant|landmark/.test(text)) {
+    return "temporal_map";
+  }
+  return "mind_map";
+}
+
+function modeReason(mode) {
+  if (mode === "flowchart") return "内容包含步骤、教学或判断路径，适合用流程图呈现。";
+  if (mode === "temporal_map") return "内容围绕地点、美食或旅行路径展开，适合用时空地图呈现。";
+  return "内容更偏观点归纳和结构拆解，适合用思维导图呈现。";
+}
+
+function compactText(value, fallback, maxLength = 34) {
+  const text = String(value || fallback || "").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function normalizeMode(value) {
+  return ["mind_map", "temporal_map", "flowchart"].includes(value) ? value : "mind_map";
+}
+
+function buildMindMapView(fileName, segments) {
+  const sortedSegments = Array.isArray(segments) ? segments.slice(0, 6) : [];
+  return {
+    center: compactText(fileName, "视频结构拆解", 18),
+    branches: sortedSegments.length
+      ? sortedSegments.map((segment) => ({
+          title: compactText(segment.title, "关键片段", 18),
+          children: [
+            compactText(segment.summary, "提炼该片段的核心信息。", 36),
+            ...((Array.isArray(segment.keywords) ? segment.keywords : []).slice(0, 2).map((keyword) => `#${keyword}`))
+          ].filter(Boolean)
+        }))
+      : [
+          { title: "核心观点", children: ["整理视频主线", "提炼可复用结论"] },
+          { title: "内容结构", children: ["按片段顺序展开", "保留关键关系"] }
+        ]
+  };
+}
+
+function buildTemporalMapView(fileName, segments) {
+  const sortedSegments = Array.isArray(segments) ? segments.slice(0, 6) : [];
+  return {
+    routeTitle: compactText(fileName, "视频路线", 18),
+    stations: sortedSegments.length
+      ? sortedSegments.map((segment, index) => ({
+          time: segment.timeLabel || `${formatSeconds(Number(segment.start || 0))}`,
+          label: compactText(segment.title, `站点 ${index + 1}`, 16),
+          place: compactText((Array.isArray(segment.keywords) && segment.keywords[0]) || segment.title, "地点", 12),
+          food: compactText((Array.isArray(segment.keywords) && segment.keywords[1]) || "体验", "体验", 12),
+          description: compactText(segment.summary, "记录这一站的场景和内容重点。", 42)
+        }))
+      : [
+          { time: "00:00", label: "起点", place: "入口", food: "体验", description: "从视频开头建立路线和主题。" },
+          { time: "继续", label: "重点站", place: "场景", food: "记忆点", description: "用地点、美食或地标串联内容。" }
+        ]
+  };
+}
+
+function buildFlowchartView(segments) {
+  const sortedSegments = Array.isArray(segments) ? segments.slice(0, 5) : [];
+  const nodes = [{ id: "start", type: "start", label: "开始", description: "进入视频主题" }];
+  const edges = [];
+
+  sortedSegments.forEach((segment, index) => {
+    const id = `node-${index + 1}`;
+    const isDecision = index === 1 || /判断|是否|选择|条件|如果|能否|要不要/.test(segmentText(segment));
+    nodes.push({
+      id,
+      type: isDecision ? "decision" : "step",
+      label: compactText(segment.title, `步骤 ${index + 1}`, 18),
+      description: compactText(segment.summary, "执行这一关键步骤。", 42)
+    });
+    edges.push({
+      from: index === 0 ? "start" : `node-${index}`,
+      to: id,
+      label: index === 0 ? "开始" : (isDecision ? "是" : "继续")
+    });
+  });
+
+  nodes.push({ id: "result", type: "result", label: "形成总结", description: "得到可复用的视频笔记结构。" });
+  edges.push({
+    from: sortedSegments.length ? `node-${sortedSegments.length}` : "start",
+    to: "result",
+    label: "然后"
+  });
+
+  if (sortedSegments.length >= 2) {
+    edges.push({
+      from: "node-2",
+      to: "result",
+      label: "否"
+    });
+  }
+
+  return { nodes, edges };
+}
+
+function buildFallbackStructuredNote(fileName, segments, relations) {
   const sortedSegments = Array.isArray(segments) ? segments : [];
+  const mode = inferSummaryMode(fileName, sortedSegments);
+  const firstTitles = sortedSegments.map((item) => item.title).slice(0, 3).join("、") || "关键片段";
+
   return {
     title: "视频结构拆解",
-    core: `${fileName || "当前视频"} 的内容可以按“${sortedSegments.map((item) => item.title).slice(0, 3).join("、") || "关键片段"}”这条链路理解。`,
+    core: `${fileName || "当前视频"} 的内容可以按“${firstTitles}”这条链路理解。`,
     steps: sortedSegments.slice(0, 6).map((item) => item.summary || item.title || "整理一个关键片段。"),
     action:
       (Array.isArray(relations) && relations[0]
         ? `${relations[0]} `
-        : "继续调整积木位置，明确并列、递进、从属或条件关系。") + "再把最强观点前置，形成一版可直接复用的笔记。"
+        : "继续调整积木位置，明确并列、递进、从属或条件关系。") + "再把最强观点前置，形成一版可直接复用的笔记。",
+    mode,
+    modeReason: modeReason(mode),
+    views: {
+      mind_map: buildMindMapView(fileName, sortedSegments),
+      temporal_map: buildTemporalMapView(fileName, sortedSegments),
+      flowchart: buildFlowchartView(sortedSegments)
+    }
   };
+}
+
+function normalizeStringArray(value, fallback = []) {
+  return (Array.isArray(value) ? value : fallback)
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
+function normalizeGeneratedNotePayload(rawNote, fileName, segments, relations) {
+  const fallback = buildFallbackStructuredNote(fileName, segments, relations);
+  const source = rawNote && typeof rawNote === "object" ? rawNote : {};
+  const views = source.views && typeof source.views === "object" ? source.views : {};
+  const mode = normalizeMode(source.mode || fallback.mode);
+
+  const note = {
+    title: compactText(source.title, fallback.title, 18),
+    core: String(source.core || fallback.core).trim(),
+    steps: normalizeStringArray(source.steps, fallback.steps).slice(0, 6),
+    action: String(source.action || fallback.action).trim(),
+    mode,
+    modeReason: String(source.modeReason || modeReason(mode)).trim(),
+    views: {
+      mind_map: views.mind_map && typeof views.mind_map === "object" ? views.mind_map : fallback.views.mind_map,
+      temporal_map:
+        views.temporal_map && typeof views.temporal_map === "object" ? views.temporal_map : fallback.views.temporal_map,
+      flowchart: views.flowchart && typeof views.flowchart === "object" ? views.flowchart : fallback.views.flowchart
+    }
+  };
+
+  if (!note.steps.length) note.steps = fallback.steps;
+  if (!note.core || !note.action) {
+    throw new Error("接口没有返回有效总结。");
+  }
+
+  return note;
 }
 
 async function postQwenChat(payload, model) {
@@ -675,7 +839,7 @@ async function handleGenerateSummary(request, response) {
   }
 
   if (!qwenApiKey) {
-    sendJson(response, 200, { note: buildFallbackNote(fileName, segments, relations), source: "mock" });
+    sendJson(response, 200, { note: buildFallbackStructuredNote(fileName, segments, relations), source: "mock" });
     return;
   }
 
@@ -691,7 +855,7 @@ async function handleGenerateSummary(request, response) {
           {
             role: "user",
             content: [
-              buildSummaryPrompt(),
+              buildStructuredSummaryPrompt(),
               "",
               `视频标题：${fileName}`,
               `积木片段：${JSON.stringify(segments, null, 2)}`,
@@ -704,16 +868,7 @@ async function handleGenerateSummary(request, response) {
     );
 
     const rawNote = JSON.parse(extractJsonString(extractMessageText(result)));
-    const note = {
-      title: String(rawNote.title || "视频结构拆解").trim(),
-      core: String(rawNote.core || "").trim(),
-      steps: Array.isArray(rawNote.steps) ? rawNote.steps.map((item) => String(item).trim()).filter(Boolean) : [],
-      action: String(rawNote.action || "").trim()
-    };
-
-    if (!note.core || !note.steps.length || !note.action) {
-      throw new Error("接口没有返回有效总结。");
-    }
+    const note = normalizeGeneratedNotePayload(rawNote, fileName, segments, relations);
 
     sendJson(response, 200, { note, source: "endpoint" });
   } catch (error) {

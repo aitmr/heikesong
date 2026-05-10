@@ -68,12 +68,12 @@
     bricknote: {
       sourceType: "demo",
       sourceLabel: "抖音演示导入",
-      videoTitle: "长沙探店短视频结构拆解",
+      videoTitle: "长沙美食旅行探店短视频结构拆解",
       videoSrc: demoVideoSrc,
       duration: 180,
       noteTitle: "长沙探店视频逻辑拆解",
       coreIdea:
-        "通过场景化叙事结合强视觉符号（红色调、复古场景），成功将流量转化为对单一品牌（文和友）的深度认知。",
+        "通过场景化叙事结合长沙地标、美食动线和强视觉符号（红色调、复古场景），成功将流量转化为对文和友与城市旅行记忆的深度认知。",
       actionItems: ["尝试在视频第10秒加入情绪钩子", "参考文和友的打光方案进行复刻"],
       segments
     },
